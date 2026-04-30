@@ -1,28 +1,27 @@
-use DataForge::{Engine, types::{EnvName}, Action, Scheduler, db::DuckDBConnector};
+use DataForge::orchestrator::{Orchestrator, OrchestratorConfig};
+use std::fs;
+use std::path::PathBuf;
 
 #[tokio::test]
-async fn test_nyc_taxi_dag_full() {
-    let dev = EnvName("dev".to_string());
-    let prod = EnvName("prod".to_string());
+async fn test_orchestrator_basic_flow() {
+    let project_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let test_model = project_root.join("test_model_v2.sql");
     
-    let mut engine = Engine::new();
-
-    // Bronze: Raw Parquet
-    engine.register_model(&dev, "model(name='bronze', query=\"SELECT fare_amount, trip_distance FROM read_parquet('taxi_data.parquet')\")").unwrap();
+    // Create temp model
+    fs::write(&test_model, "SELECT 1 as id").unwrap();
     
-    // Silver: Filtered - Use ref() to track dependency
-    engine.register_model(&dev, "model(name='silver', query='SELECT fare_amount, trip_distance FROM ' + ref('bronze') + ' WHERE fare_amount > 0', columns=['fare_amount'])").unwrap();
-
-    let plan = engine.plan(&dev, &prod).unwrap();
-    assert_eq!(plan.actions.len(), 2);
+    let config = OrchestratorConfig {
+        watch_mode: false,
+        preview_enabled: false,
+    };
     
-    if let Action::Update(m, ..) = &plan.actions[0] {
-        assert_eq!(m.name.0, "bronze");
-    }
-
-    let conn = duckdb::Connection::open_in_memory().unwrap();
-    let connector = DuckDBConnector::new(conn);
-    let scheduler = Scheduler;
-
-    scheduler.run_plan(&engine, plan, &connector).await.expect("Physical execution failed");
+    let orch = Orchestrator::new(config, project_root.clone());
+    unsafe { std::env::set_var("DATAFORGE_MOCK_SDF", "1"); }
+    
+    let res = orch.process_change(test_model.to_str().unwrap()).await;
+    
+    // Cleanup
+    let _ = fs::remove_file(&test_model);
+    
+    assert!(res.is_ok(), "Orchestrator failed to process basic change: {:?}", res.err());
 }

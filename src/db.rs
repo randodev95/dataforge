@@ -215,6 +215,11 @@ impl WarehouseConnector for DuckDBConnector {
         }).await.map_err(|e| DataForgeError::Other(e.into()))?
         .map_err(|e: anyhow::Error| DataForgeError::WarehouseError(e.to_string()))
     }
+
+    async fn estimate_cost(&self, _sql: &str) -> Result<f64> {
+        // DuckDB is local, cost is effectively zero or simple CPU cycles
+        Ok(0.01)
+    }
 }
 
 pub struct PostgresConnector {
@@ -245,6 +250,11 @@ impl WarehouseConnector for PostgresConnector {
         .map_err(|e| DataForgeError::WarehouseError(e.to_string()))?;
         Ok(rows.into_iter().map(|r| r.get(0)).collect())
     }
+
+    async fn estimate_cost(&self, _sql: &str) -> Result<f64> {
+        // Mock cost for Postgres
+        Ok(1.0)
+    }
 }
 
 pub struct SqliteConnector {
@@ -271,5 +281,9 @@ impl WarehouseConnector for SqliteConnector {
             .await
             .map_err(|e| DataForgeError::WarehouseError(e.to_string()))?;
         Ok(rows.into_iter().map(|r| r.get("name")).collect())
+    }
+
+    async fn estimate_cost(&self, _sql: &str) -> Result<f64> {
+        Ok(0.05)
     }
 }

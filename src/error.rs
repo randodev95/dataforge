@@ -11,12 +11,8 @@ pub enum DataForgeError {
     #[error("Environment not found: {0}")]
     EnvNotFound(String),
 
-    #[error("Contract violation: Model '{model}' requires column '{column}' from upstream '{upstream}'")]
-    ContractViolation {
-        model: String,
-        column: String,
-        upstream: String,
-    },
+    #[error("Contract violation for model {0}: missing columns {1:?}")]
+    ContractViolation(String, Vec<String>),
 
     #[error("SQL Parse Error: {0}")]
     SqlParseError(String),
