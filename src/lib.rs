@@ -5,25 +5,36 @@ use starlark::syntax::{AstModule, Dialect as StarlarkDialect};
 use std::sync::{Arc, RwLock};
 use sqlparser::dialect::*;
 use sqlparser::parser::Parser;
-use sqlparser::ast::{Statement, SetExpr, SelectItem, Expr, VisitMut, VisitorMut, ObjectName, ObjectNamePart};
+use sqlparser::ast::{Statement, SetExpr, SelectItem, Expr, VisitMut, VisitorMut, ObjectName, ObjectNamePart, Query};
 use sha2::{Sha256, Digest};
+#[cfg(feature = "native")]
 use notify::{Watcher as NotifyWatcher, RecursiveMode, RecommendedWatcher};
 use std::path::Path;
-use async_trait::async_trait;
 use std::ops::ControlFlow;
 use std::str::FromStr;
+#[cfg(feature = "native")]
+use tokio;
+#[cfg(feature = "native")]
+use async_trait::async_trait;
 
 pub mod error;
 pub mod types;
-pub mod starlark_dsl;
+#[cfg(feature = "native")]
 pub mod db;
+#[cfg(feature = "native")]
 pub mod tui;
 pub mod project;
 pub mod parser;
 
+// DataForge 2.0 Core
+pub mod orchestrator;
+pub mod api;
+pub mod bridge;
+pub mod macros;
+pub mod plugins;
+
 use crate::error::{DataForgeError, Result};
 use crate::types::{Model, ModelName, EnvName, DagHash};
-use crate::starlark_dsl::{dataforge_globals, StarlarkContext};
 
 #[derive(Debug, Clone, Copy, Default)]
 pub enum TargetDialect {
@@ -68,26 +79,15 @@ struct EngineContext {
     environments: RwLock<HashMap<EnvName, HashMap<ModelName, Model>>>,
     watermarks: RwLock<HashMap<ModelName, String>>,
     dialect: TargetDialect,
+    cache: RwLock<HashMap<String, crate::types::CacheItem>>,
 }
 
 #[derive(Clone)]
-pub struct Engine {
+pub struct LogicalEngine {
     context: Arc<EngineContext>,
 }
 
-#[async_trait]
-pub trait StateStore: Send + Sync {
-    async fn save_models(&self, env: &EnvName, models: &HashMap<ModelName, Model>) -> Result<()>;
-    async fn load_models(&self, env: &EnvName) -> Result<HashMap<ModelName, Model>>;
-}
-
-#[async_trait]
-pub trait WarehouseConnector: Send + Sync {
-    async fn execute(&self, sql: &str) -> Result<()>;
-    async fn fetch_columns(&self, table: &str) -> Result<Vec<String>>;
-}
-
-impl Engine {
+impl LogicalEngine {
     pub fn new() -> Self {
         Self::with_dialect(TargetDialect::Generic)
     }
@@ -98,6 +98,7 @@ impl Engine {
                 environments: RwLock::new(HashMap::new()),
                 watermarks: RwLock::new(HashMap::new()),
                 dialect,
+                cache: RwLock::new(HashMap::new()),
             })
         }
     }
@@ -116,6 +117,24 @@ impl Engine {
         envs.iter()
             .map(|(name, models)| (name.clone(), models.values().cloned().collect()))
             .collect()
+    }
+
+    pub fn get_metadata(&self, env: &EnvName) -> Result<Vec<crate::types::ModelMetadata>> {
+        let envs = self.context.environments.read().unwrap();
+        let models = envs.get(env).ok_or_else(|| DataForgeError::EnvNotFound(env.0.clone()))?;
+        
+        let mut metadata = vec![];
+        for (name, model) in models {
+            let hash = self.get_hash(env, name)?;
+            metadata.push(crate::types::ModelMetadata {
+                name: name.clone(),
+                hash,
+                deps: model.deps.clone(),
+                columns: model.inferred_columns.clone(),
+                lineage: model.column_lineage.clone(),
+            });
+        }
+        Ok(metadata)
     }
 
     pub fn extract_columns(&self, sql: &str, dialect: TargetDialect) -> Result<Vec<String>> {
@@ -139,69 +158,34 @@ impl Engine {
         Ok(cols)
     }
 
-    pub fn register_model(&mut self, env: &EnvName, source: &str) -> Result<()> {
-        let ast = AstModule::parse("model.star", source.to_string(), &StarlarkDialect::Standard)
-            .map_err(|e| DataForgeError::StarlarkError(e.to_string()))?;
-        let globals = GlobalsBuilder::new().with(dataforge_globals).build();
-        let module = starlark::environment::Module::new();
-        let starlark_ctx = StarlarkContext {
-            refs: std::cell::RefCell::new(vec![]),
-            engine: self.clone(),
-            env: env.clone(),
-            sql_body: None,
-        };
-        let mut eval = Evaluator::new(&module);
-        eval.extra = Some(&starlark_ctx);
-        eval.eval_module(ast, &globals).map_err(|e| DataForgeError::StarlarkError(e.to_string()))?;
-        Ok(())
-    }
-
-    pub fn load_project(&mut self, project: &project::Project, env: &EnvName) -> Result<()> {
-        let mut globals_builder = GlobalsBuilder::new().with(dataforge_globals);
+    pub fn extract_column_lineage(&self, sql: &str, dialect: TargetDialect, deps: &[ModelName]) -> Result<Vec<crate::types::ColumnLineage>> {
+        let ast = Parser::parse_sql(&*dialect.to_sql_dialect(), sql)
+            .map_err(|e| DataForgeError::SqlParseError(e.to_string()))?;
+        let mut lineage = vec![];
         
-        let macro_module = starlark::environment::Module::new();
-        let base_globals = GlobalsBuilder::new().with(dataforge_globals).build();
-        
-        let macros = project.discover_macros();
-        let combined_macros = macros.iter()
-            .map(|p| std::fs::read_to_string(p))
-            .collect::<std::result::Result<Vec<_>, _>>()?
-            .join("\n");
-        
-        if !combined_macros.is_empty() {
-            let ast = AstModule::parse("macros.stark", combined_macros, &StarlarkDialect::Standard)
-                .map_err(|e| DataForgeError::StarlarkError(e.to_string()))?;
-            let mut eval = Evaluator::new(&macro_module);
-            eval.eval_module(ast, &base_globals).map_err(|e| DataForgeError::StarlarkError(e.to_string()))?;
+        for stmt in ast {
+            if let Statement::Query(q) = stmt {
+                if let SetExpr::Select(s) = *q.body {
+                    for item in s.projection {
+                        let col_name = match &item {
+                            SelectItem::UnnamedExpr(Expr::Identifier(ident)) => Some(ident.value.clone()),
+                            SelectItem::ExprWithAlias { alias, .. } => Some(alias.value.clone()),
+                            _ => None,
+                        };
+                        
+                        if let Some(name) = col_name {
+                            // Simple heuristic: if a column is selected, it comes from all referenced deps for now
+                            // Future: parse Expr to find specific table refs
+                            lineage.push(crate::types::ColumnLineage {
+                                column: name,
+                                source_models: deps.to_vec(),
+                            });
+                        }
+                    }
+                }
+            }
         }
-        
-        let frozen_macros = macro_module.freeze().map_err(|e| DataForgeError::StarlarkError(format!("{:?}", e)))?;
-        for name in frozen_macros.names() {
-            let value = frozen_macros.get(name.as_str()).map_err(|e| DataForgeError::StarlarkError(e.to_string()))?;
-            globals_builder.set(name.as_str(), value);
-        }
-        
-        let globals = globals_builder.build();
-
-        let models = project.discover_models();
-        for path in models {
-            let content = std::fs::read_to_string(&path)?;
-            let parsed = parser::parse_sql_file(&content)?;
-            
-            let ast = AstModule::parse(&path.to_string_lossy(), parsed.header, &StarlarkDialect::Standard)
-                .map_err(|e| DataForgeError::StarlarkError(e.to_string()))?;
-            let module = starlark::environment::Module::new();
-            let starlark_ctx = StarlarkContext {
-                refs: std::cell::RefCell::new(vec![]),
-                engine: self.clone(),
-                env: env.clone(),
-                sql_body: Some(parsed.body),
-            };
-            let mut eval = Evaluator::new(&module);
-            eval.extra = Some(&starlark_ctx);
-            eval.eval_module(ast, &globals).map_err(|e| DataForgeError::StarlarkError(e.to_string()))?;
-        }
-        Ok(())
+        Ok(lineage)
     }
 
     pub fn get_hash(&self, env: &EnvName, name: &ModelName) -> Result<DagHash> {
@@ -303,6 +287,7 @@ impl Engine {
         Ok(())
     }
 
+    #[cfg(feature = "native")]
     pub async fn publish<C: WarehouseConnector>(&self, env: &EnvName, connector: &C) -> Result<()> {
         let envs = self.context.environments.read().unwrap();
         if let Some(models) = envs.get(env) {
@@ -330,101 +315,23 @@ impl Engine {
     }
 }
 
-pub struct Watcher {
-    _engine: Engine,
-    _watcher: RecommendedWatcher,
+pub type Engine = LogicalEngine;
+
+#[cfg(feature = "native")]
+#[async_trait]
+pub trait StateStore: Send + Sync {
+    async fn save_models(&self, env: &EnvName, models: &HashMap<ModelName, Model>) -> Result<()>;
+    async fn load_models(&self, env: &EnvName) -> Result<HashMap<ModelName, Model>>;
 }
 
-impl Watcher {
-    pub fn new(engine: Engine, path: &str) -> Result<Self> {
-        let (tx, rx) = std::sync::mpsc::channel();
-        let mut watcher = RecommendedWatcher::new(tx, notify::Config::default())
-            .map_err(|e| DataForgeError::Other(e.into()))?;
-        watcher.watch(Path::new(path), RecursiveMode::Recursive)
-            .map_err(|e| DataForgeError::Other(e.into()))?;
-        let mut engine_clone = engine.clone();
-        std::thread::spawn(move || {
-            for res in rx {
-                if let Ok(event) = res {
-                    if let notify::EventKind::Modify(_) = event.kind {
-                        for p in event.paths {
-                            if let Ok(content) = std::fs::read_to_string(&p) {
-                                if let Err(e) = engine_clone.register_model(&EnvName("dev".to_string()), &content) {
-                                    eprintln!("DataForge Watcher Error: {}", e);
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        });
-        Ok(Self { _engine: engine, _watcher: watcher })
-    }
+#[cfg(feature = "native")]
+#[async_trait]
+pub trait WarehouseConnector: Send + Sync {
+    async fn execute(&self, sql: &str) -> Result<()>;
+    async fn fetch_columns(&self, table: &str) -> Result<Vec<String>>;
+    async fn estimate_cost(&self, sql: &str) -> Result<f64>;
 }
 
-pub struct Scheduler;
-
-struct TableRewriter<'a> {
-    mapping: &'a HashMap<ModelName, String>,
-}
-
-impl<'a> VisitorMut for TableRewriter<'a> {
-    type Break = ();
-
-    fn pre_visit_relation(&mut self, relation: &mut ObjectName) -> ControlFlow<Self::Break> {
-        for part in &mut relation.0 {
-            if let ObjectNamePart::Identifier(ident) = part {
-                if let Some(new_name) = self.mapping.get(&ModelName(ident.value.clone())) {
-                    ident.value = new_name.clone();
-                }
-            }
-        }
-        ControlFlow::Continue(())
-    }
-}
-
-impl Scheduler {
-    pub async fn run_plan<C: WarehouseConnector>(&self, engine: &Engine, plan: Plan, connector: &C) -> Result<()> {
-        let mut mapping = HashMap::new();
-        let envs = engine.get_environments();
-        if let Some(models) = envs.get(&plan.target_env) {
-            for m in models {
-                let hash = engine.get_hash(&plan.target_env, &m.name)?;
-                mapping.insert(m.name.clone(), format!("model__{}", hash.0));
-            }
-        }
-        for action in &plan.actions {
-            match action {
-                Action::Update(m, hash, _) => {
-                    mapping.insert(m.name.clone(), format!("model__{}", hash.0));
-                }
-                Action::Remove(_) => {}
-            }
-        }
-
-        for action in plan.actions {
-            match action {
-                Action::Update(m, hash, query) => {
-                    if m.inferred_columns.contains(&"*".to_string()) {
-                        let _cols = connector.fetch_columns(&m.name.0).await.unwrap_or_default();
-                    }
-
-                    let dialect = engine.context.dialect;
-                    let mut ast = Parser::parse_sql(&*dialect.to_sql_dialect(), &query)
-                        .map_err(|e| DataForgeError::SqlParseError(e.to_string()))?;
-                    let mut rewriter = TableRewriter { mapping: &mapping };
-                    for stmt in &mut ast {
-                        let _ = stmt.visit(&mut rewriter);
-                    }
-                    let sql = format!("CREATE OR REPLACE TABLE model__{} AS {}", hash.0, ast[0]);
-                    connector.execute(&sql).await?;
-                }
-                Action::Remove(_) => {}
-            }
-        }
-        Ok(())
-    }
-}
 
 #[derive(Debug, Clone)]
 pub enum Action {
@@ -438,21 +345,3 @@ pub struct Plan {
     pub target_env: EnvName,
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[tokio::test]
-    async fn test_topo_sort_order() {
-        let mut engine = Engine::new();
-        let dev = EnvName("dev".to_string());
-        let prod = EnvName("prod".to_string());
-        engine.register_model(&dev, "model(name='parent', query='SELECT 1')").unwrap();
-        engine.register_model(&dev, "model(name='child', query='SELECT * FROM ' + ref('parent'))").unwrap();
-        
-        let plan = engine.plan(&dev, &prod).unwrap();
-        if let Action::Update(m0, _, _) = &plan.actions[0] {
-            assert_eq!(m0.name.0, "parent");
-        }
-    }
-}

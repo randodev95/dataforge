@@ -1,72 +1,70 @@
-# How to Use DataForge
+# How-to Guide: Establish a Reactive Data Pipeline
 
-This guide provides a hands-on introduction to setting up and running your first DataForge project.
+This guide shows you how to use DataForge 2.0 to create a "Pipeline of Truth"—a high-performance, reactive development environment that validates logic via SDF and plans execution via Rocky.
 
-## 1. Project Initialization
+## Prerequisites
+- Rust (stable)
+- SDF CLI installed in PATH
+- DuckDB (optional, for previews)
 
-Start by creating a structured project directory. DataForge uses a specific folder layout to automate model discovery.
+## 1. Initialize Your Project
+Create a new project structure compatible with the 2.0 Orchestrator.
 
 ```bash
 dataforge init my_project
+cd my_project
 ```
 
-This creates the following structure:
-- `models/`: Where your SQL transformations live.
-  - `bronze/`: Raw data ingestion.
-  - `silver/`: Cleaning and normalization.
-  - `gold/`: Analytics-ready tables.
-- `macros/`: Shared Starlark logic (`.stark` files).
-- `dataforge.yaml`: Project configuration.
+This creates:
+- `models/`: Your SQL logic.
+- `macros/`: Shared Starlark functions.
+- `plugins/`: WASM governance plugins.
 
-## 2. Defining Your First Model
-
-Create a file at `models/bronze/users.sql`. DataForge models use a **hybrid format**: a Starlark metadata header followed by a SQL body.
-
-```sql
----
-model(
-    name = "raw_users",
-    columns = ["id", "email", "created_at"]
-)
----
-SELECT * FROM read_csv('users.csv')
-```
-
-### Key Metadata Fields:
-- `name`: Unique identifier for the model.
-- `columns`: (Optional) Expected column list for contract validation.
-- `watermark`: (Optional) Column name used for incremental loading.
-
-## 3. Using Macros
-
-Shared logic lives in `macros/*.stark`. These are global and can be referenced in any model header.
-
-**Create `macros/utils.stark`**:
-```python
-def clean_name(name):
-    return name.strip().lower()
-```
-
-**Use it in a model**:
-```sql
----
-model(name = clean_name("  Analytics_Users  "))
----
-SELECT * FROM {{ref('raw_users')}}
-```
-
-## 4. Running a Plan
-
-The `plan` command calculates the dependency graph (DAG) and identifies what needs to be updated based on content changes.
+## 2. Launch the Reactive Engine
+Instead of manual planning, start the DataForge 2.0 **Serve** mode. This monitors your files and provides real-time feedback.
 
 ```bash
-dataforge plan --project . --from dev --to prod --dialect postgres
+dataforge serve --project . --port 8080
 ```
 
-### Understanding the Output:
-- **Update**: The model or its dependencies have changed. DataForge provides the new SQL and a unique content hash.
-- **Remove**: The model file was deleted from the source environment and should be pruned from the target.
+The engine now watches for changes and exposes a JSON-RPC API for IDE integration.
 
-## 5. Development Workflow
+## 3. Define a Model with Macros
+Use the new `${ref()}` syntax for microsecond-fast macro expansion.
 
-For the best experience, keep a terminal open with the DataForge watcher or run plans frequently as you edit. Because DataForge uses **Topological Sorting**, it will always ensure parent models are planned before their children.
+**models/stg_orders.sql**:
+```sql
+SELECT 
+    order_id,
+    customer_id,
+    amount
+FROM raw_orders
+```
+
+**models/fct_orders.sql**:
+```sql
+SELECT 
+    o.order_id,
+    c.name as customer_name,
+    o.amount
+FROM ${ref('stg_orders')} o
+JOIN ${ref('stg_customers')} c ON o.customer_id = c.customer_id
+```
+
+## 4. Validate Logic (SDF Bridge)
+When you save a file, DataForge automatically triggers the **SDF Bridge**. 
+- It catchs column-name typos and type mismatches instantly.
+- Look at the `serve` logs for logic errors before they hit the warehouse.
+
+## 5. Plan State (Rocky Bridge)
+Once logic is green, DataForge uses the **Rocky Bridge** to calculate zero-copy clones or deployment plans. This ensures your development environment matches production without data duplication.
+
+## 6. Add Custom WASM Validation
+Create a sandboxed check for data quality or governance.
+
+1. Write a Rust plugin in `plugins/check_amount/`.
+2. Compile to WASM.
+3. DataForge will execute this plugin as part of the orchestration pipeline.
+
+---
+**Next Step**: Learn more about the [Architecture](docs/ARCHITECTURE.md).

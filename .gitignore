@@ -1,1 +1,13 @@
 /target
+
+# DataForge 2.0 Temp
+scratch/
+*.db
+target_wasm/
+
+# DataForge 2.0 Artifacts
+**/target_wasm/
+legacy_tests/
+.sdf/
+.rocky/
+
