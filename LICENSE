@@ -1,17 +1,29 @@
-DataForge Source Available License
-Version 1.0
+ELASTIC LICENSE v2
 
-Copyright (c) 2026 randodev95. All rights reserved.
+Acceptance
 
-Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to use the Software solely for:
+By using the software, you agree to the terms of this license.
 
-1. COMMAND LINE INTERFACE (CLI) USAGE: Running the DataForge engine via its provided CLI for local or automated data transformation tasks.
-2. INTERNAL USAGE: Using the Software within an organization for internal data processing and modeling purposes.
+License Grant
 
-RESTRICTIONS:
+The Licensor grants you a non-exclusive, royalty-free, worldwide, non-transferable license to use, copy, distribute, make available, and prepare derivative works of the software.
 
-- COMMERCIAL PRODUCTIZATION: You may NOT use the Software as the basis for a commercial product, service, or platform (e.g., as a SaaS offering, a managed transformation service, or a competing data modeling tool) without explicit written permission from the copyright holder.
-- REDISTRIBUTION: You may NOT redistribute, sublicense, or sell the Software as a standalone product or as part of another product.
-- RESERVATION OF RIGHTS: The copyright holder reserves the exclusive right to commercialize, productize, and distribute the Software as a service or commercial offering.
+Conditions
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+You may not:
+
+1. Provide the software to third parties as a managed or hosted service, where the service provides users with access to any substantial set of the features or functionality of the software.
+
+2. Circumvent the license key functionality or remove/obscure any licensing, copyright, or other notices.
+
+Other Terms
+
+1. Intellectual Property. The Licensor retains all ownership of the software.
+
+2. Disclaimer. The software is provided "as is" without warranty.
+
+3. Termination. This license terminates if you breach any of its terms.
+
+4. Governing Law. This license is governed by the laws of California.
+
+For more information, see https://www.elastic.co/licensing/elastic-license.

@@ -4,7 +4,7 @@
 
 DataForge is a modern data modeling framework built in Rust, designed for speed, reproducibility, and flexibility. It combines the power of Starlark (Python dialect) for configuration and shared logic with the performance of warehouse-native SQL for data processing.
 
-[![License: Custom](https://img.shields.io/badge/License-Custom-red.svg)](LICENSE)
+[![License: ELv2](https://img.shields.io/badge/License-ELv2-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-stable-brightgreen.svg)](https://www.rust-lang.org/)
 
 ## 🚀 Key Features
@@ -59,4 +59,6 @@ We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) f
 
 ## 📄 License
 
-This project is licensed under the **DataForge Source Available License**. Usage is restricted to CLI and internal modeling tasks. Commercial productization or SaaS redistribution is strictly prohibited. See the [LICENSE](LICENSE) file for full terms.
+This project is licensed under the **Elastic License v2**. 
+
+It allows you to use, copy, and distribute the software for internal and CLI purposes. However, you may not provide the software as a managed or hosted service. See the [LICENSE](LICENSE) file for full details.
