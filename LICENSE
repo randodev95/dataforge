@@ -1,0 +1,17 @@
+DataForge Source Available License
+Version 1.0
+
+Copyright (c) 2026 randodev95. All rights reserved.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to use the Software solely for:
+
+1. COMMAND LINE INTERFACE (CLI) USAGE: Running the DataForge engine via its provided CLI for local or automated data transformation tasks.
+2. INTERNAL USAGE: Using the Software within an organization for internal data processing and modeling purposes.
+
+RESTRICTIONS:
+
+- COMMERCIAL PRODUCTIZATION: You may NOT use the Software as the basis for a commercial product, service, or platform (e.g., as a SaaS offering, a managed transformation service, or a competing data modeling tool) without explicit written permission from the copyright holder.
+- REDISTRIBUTION: You may NOT redistribute, sublicense, or sell the Software as a standalone product or as part of another product.
+- RESERVATION OF RIGHTS: The copyright holder reserves the exclusive right to commercialize, productize, and distribute the Software as a service or commercial offering.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
