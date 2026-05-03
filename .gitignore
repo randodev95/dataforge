@@ -1,0 +1,11 @@
+/target
+**/*.rs.bk
+Cargo.lock
+
+# Ignore local RocksDB state
+titan_db/
+.titan_db/
+titan_state/
+*.csv
+TITAN_SPEC.md
+test_project/*
