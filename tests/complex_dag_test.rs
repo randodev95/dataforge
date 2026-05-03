@@ -2,13 +2,14 @@ mod common;
 use common::TestEnv;
 use titan_engine::{Filler, Muscle, VDE};
 use titan_engine::filler::dag::ModelTask;
+use titan_engine::materialize::Materialization;
 use std::collections::HashMap;
 use std::sync::Arc;
 
 #[tokio::test]
 async fn test_parallel_vs_series_execution() {
     let env = TestEnv::new();
-    let filler = Filler::new(env.state_store);
+    let filler = Filler::new(env.state_store, 4);
     let muscle = Arc::new(Muscle::new());
     let vde = Arc::new(VDE::new(muscle.clone()));
     let env_name = "prod";
@@ -24,6 +25,8 @@ async fn test_parallel_vs_series_execution() {
         vde: vde.clone(),
         parent_names: vec![],
         plan_only: false,
+        semaphore: filler.semaphore.clone(),
+        materialization: Materialization::View,
     };
 
     let task_b = ModelTask {
@@ -37,6 +40,8 @@ async fn test_parallel_vs_series_execution() {
         vde: vde.clone(),
         parent_names: vec![],
         plan_only: false,
+        semaphore: filler.semaphore.clone(),
+        materialization: Materialization::View,
     };
 
     // Run two independent tasks - they should run in parallel in the DAG
@@ -54,6 +59,8 @@ async fn test_parallel_vs_series_execution() {
         vde: vde.clone(),
         parent_names: vec!["task_a".to_string(), "task_b".to_string()],
         plan_only: false,
+        semaphore: filler.semaphore.clone(),
+        materialization: Materialization::View,
     };
 
     filler.run_dag(vec![task_c]).await.unwrap();

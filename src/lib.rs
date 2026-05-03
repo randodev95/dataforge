@@ -1,3 +1,9 @@
+//! # Titan Engine
+//! 
+//! Titan is a high-performance, vectorized SQL execution engine designed for reliable 
+//! data materialization. It implements a "Serialized Pipe" architecture to bypass 
+//! the complexities of AST sharing across polyglot SQL environments.
+
 pub mod core;
 pub mod fingerprint;
 pub mod filler;
@@ -7,6 +13,8 @@ pub mod materialize;
 pub mod project;
 pub mod cli;
 pub mod error;
+pub mod hooks;
+pub mod quality;
 
 pub use core::TitanSQL;
 pub use fingerprint::{Fingerprinter, LogicHash};

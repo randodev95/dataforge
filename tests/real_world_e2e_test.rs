@@ -1,7 +1,8 @@
 mod common;
 use common::TestEnv;
-use titan_engine::{Filler, LogicHash, Muscle, VDE};
+use titan_engine::{Filler, Muscle, VDE};
 use titan_engine::filler::dag::ModelTask;
+use titan_engine::materialize::Materialization;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::io::Write;
@@ -10,7 +11,7 @@ use tempfile::Builder;
 #[tokio::test]
 async fn test_real_world_pipeline() {
     let env = TestEnv::new();
-    let filler = Filler::new(env.state_store);
+    let filler = Filler::new(env.state_store, 4);
     let muscle = Arc::new(Muscle::new());
     let vde = Arc::new(VDE::new(muscle.clone()));
     let env_name = "prod";
@@ -37,6 +38,8 @@ async fn test_real_world_pipeline() {
         vde: vde.clone(),
         parent_names: vec![],
         plan_only: false,
+        semaphore: filler.semaphore.clone(),
+        materialization: Materialization::View,
     };
 
     let dim_task = ModelTask {
@@ -50,6 +53,8 @@ async fn test_real_world_pipeline() {
         vde: vde.clone(),
         parent_names: vec!["stg_users".to_string()],
         plan_only: false,
+        semaphore: filler.semaphore.clone(),
+        materialization: Materialization::View,
     };
 
     // --- TEST A: Initial Run ---
@@ -86,6 +91,8 @@ async fn test_real_world_pipeline() {
         vde: vde.clone(),
         parent_names: vec![],
         plan_only: false,
+        semaphore: filler.semaphore.clone(),
+        materialization: Materialization::View,
     };
 
     filler.run_dag(vec![stg_task_new.clone()]).await.unwrap();
@@ -103,7 +110,7 @@ async fn test_real_world_pipeline() {
 #[tokio::test]
 async fn test_failure_isolation() {
     let env = TestEnv::new();
-    let filler = Filler::new(env.state_store);
+    let filler = Filler::new(env.state_store, 4);
     let muscle = Arc::new(Muscle::new());
     let vde = Arc::new(VDE::new(muscle.clone()));
     let env_name = "prod";
@@ -119,6 +126,8 @@ async fn test_failure_isolation() {
         vde: vde.clone(),
         parent_names: vec!["missing_parent".to_string()],
         plan_only: false,
+        semaphore: filler.semaphore.clone(),
+        materialization: Materialization::View,
     };
 
     let result = filler.run_dag(vec![bad_task]).await;

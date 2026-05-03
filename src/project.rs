@@ -1,3 +1,5 @@
+pub mod profiles;
+pub mod exposures;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};

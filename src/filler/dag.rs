@@ -9,7 +9,8 @@ use std::sync::Arc;
 use petgraph::graph::DiGraph;
 use petgraph::algo::toposort;
 use futures::stream::{FuturesUnordered, StreamExt};
-use tracing::{info, debug, warn, error};
+use tracing::{info};
+use tokio::sync::Semaphore;
 
 #[derive(Clone)]
 pub struct ModelTask {
@@ -22,11 +23,16 @@ pub struct ModelTask {
     pub muscle: Arc<Muscle>,
     pub vde: Arc<VDE>,
     pub parent_names: Vec<String>,
+    pub materialization: crate::materialize::Materialization,
     pub plan_only: bool,
+    pub semaphore: Arc<Semaphore>,
 }
 
 impl ModelTask {
     pub async fn execute(&self) -> Result<LogicHash> {
+        let _permit = self.semaphore.acquire().await
+            .map_err(|e| TitanError::ExecutionError(e.to_string()))?;
+
         let mut parent_hashes = Vec::new();
         for name in &self.parent_names {
             if let Some(hash) = self.state_store.get_hash_by_name(&self.env, name).map_err(|e| TitanError::StateError(e.to_string()))? {
@@ -68,10 +74,8 @@ impl ModelTask {
 
         info!(model = %self.name, hash = %hash, "Executing model in DataFusion");
         
-        let table_name = format!("{}__{}", self.name, hash);
-        
-        let materialization_sql = format!("CREATE OR REPLACE VIEW {} AS {}", table_name, normalized_sql.as_str());
-        self.muscle.execute(&materialization_sql).await
+        let materializer = crate::materialize::get_materializer(&self.materialization, self.muscle.clone(), self.vde.clone());
+        materializer.materialize(&self.env, &self.name, &hash, normalized_sql.as_str()).await
             .map_err(|e| TitanError::ExecutionError(e.to_string()))?;
 
         self.vde.materialization_swap(&self.env, &self.name, &hash).await
@@ -98,13 +102,15 @@ impl ModelTask {
 pub struct Filler {
     pub state_store: Arc<StateStore>,
     pub fingerprinter: Arc<Fingerprinter>,
+    pub semaphore: Arc<Semaphore>,
 }
 
 impl Filler {
-    pub fn new(state_store: StateStore) -> Self {
+    pub fn new(state_store: StateStore, concurrency: usize) -> Self {
         Self {
             state_store: Arc::new(state_store),
             fingerprinter: Arc::new(Fingerprinter::new()),
+            semaphore: Arc::new(Semaphore::new(concurrency)),
         }
     }
 

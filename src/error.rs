@@ -1,5 +1,5 @@
 use thiserror::Error;
-use crate::fingerprint::LogicHash;
+
 
 #[derive(Error, Debug)]
 pub enum TitanError {

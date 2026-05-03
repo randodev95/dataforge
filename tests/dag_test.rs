@@ -1,14 +1,15 @@
 mod common;
 use common::TestEnv;
-use titan_engine::{Filler, LogicHash, Muscle, VDE};
+use titan_engine::{Filler, Muscle, VDE};
 use titan_engine::filler::dag::ModelTask;
+use titan_engine::materialize::Materialization;
 use std::collections::HashMap;
 use std::sync::Arc;
 
 #[tokio::test]
 async fn test_full_dag_execution() {
     let env = TestEnv::new();
-    let filler = Filler::new(env.state_store);
+    let filler = Filler::new(env.state_store, 4);
     let muscle = Arc::new(Muscle::new());
     let vde = Arc::new(VDE::new(muscle.clone()));
     
@@ -28,6 +29,7 @@ async fn test_full_dag_execution() {
         vde: vde.clone(),
         parent_names: vec![],
         plan_only: false,
+        semaphore: filler.semaphore.clone(), materialization: Materialization::View,
     };
 
     // 2. Run first time
@@ -50,6 +52,8 @@ async fn test_full_dag_execution() {
         vde: vde.clone(),
         parent_names: vec!["stg_users".to_string()],
         plan_only: false,
+        semaphore: filler.semaphore.clone(),
+        materialization: Materialization::View,
     };
 
     // 5. Run second time (should process task2)
@@ -63,7 +67,7 @@ async fn test_full_dag_execution() {
 #[tokio::test]
 async fn test_smart_skip() {
     let env = TestEnv::new();
-    let filler = Filler::new(env.state_store);
+    let filler = Filler::new(env.state_store, 4);
     let muscle = Arc::new(Muscle::new());
     let vde = Arc::new(VDE::new(muscle.clone()));
     let env_name = "prod";
@@ -79,6 +83,7 @@ async fn test_smart_skip() {
         vde: vde.clone(),
         parent_names: vec![],
         plan_only: false,
+        semaphore: filler.semaphore.clone(), materialization: Materialization::View,
     };
 
     // Run 1
@@ -96,6 +101,8 @@ async fn test_smart_skip() {
         vde: vde.clone(),
         parent_names: vec![],
         plan_only: false,
+        semaphore: filler.semaphore.clone(),
+        materialization: Materialization::View,
     };
     
     filler.run_dag(vec![task_redo]).await.unwrap();

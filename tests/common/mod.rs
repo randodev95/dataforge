@@ -3,6 +3,7 @@ use tempfile::TempDir;
 use titan_engine::StateStore;
 
 pub struct TestEnv {
+    #[allow(dead_code)]
     pub db_dir: TempDir,
     pub state_store: StateStore,
 }
@@ -18,6 +19,7 @@ impl TestEnv {
     }
 }
 
+#[allow(dead_code)]
 pub fn get_resource_path(name: &str) -> PathBuf {
     let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     path.push("tests/resources");
