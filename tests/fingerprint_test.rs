@@ -26,7 +26,7 @@ fn test_hashing_determinism() {
 
 #[test]
 fn test_logic_change_changes_hash() {
-    let fingerprinter = Fingerprinter::new();
+    let fingerprinter = Fingerprinter::new(std::path::Path::new("."));
     let config = HashMap::new();
     let parent_hashes = vec![];
     let env = "prod";
@@ -34,21 +34,21 @@ fn test_logic_change_changes_hash() {
     let sql1 = "SELECT a, b FROM users";
     let sql2 = "SELECT a, b, c FROM users";
 
-    let (_, hash1) = fingerprinter.fingerprint(sql1, env, &config, &parent_hashes).unwrap();
-    let (_, hash2) = fingerprinter.fingerprint(sql2, env, &config, &parent_hashes).unwrap();
+    let (_, hash1) = fingerprinter.fingerprint(sql1, env, &config, &parent_hashes, "test1", false).unwrap();
+    let (_, hash2) = fingerprinter.fingerprint(sql2, env, &config, &parent_hashes, "test2", false).unwrap();
 
     assert_ne!(hash1, hash2, "Logic changes should change the semantic hash");
 }
 
 #[test]
 fn test_template_rendering() {
-    let fingerprinter = Fingerprinter::new();
+    let fingerprinter = Fingerprinter::new(std::path::Path::new("."));
     let config = HashMap::new();
     let parent_hashes = vec![];
     let env = "prod";
 
     let sql = "SELECT * FROM {{ ref('stg_users') }}";
-    let (rendered, _) = fingerprinter.fingerprint(sql, env, &config, &parent_hashes).unwrap();
+    let (rendered, _) = fingerprinter.fingerprint(sql, env, &config, &parent_hashes, "test", false).unwrap();
 
     // With env=prod, ref('stg_users') should render as prod_stg_users
     assert!(rendered.as_str().contains("prod_stg_users"), "Template should render ref() with environment prefix");

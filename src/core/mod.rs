@@ -1,3 +1,8 @@
+//! # Titan Core Types
+//! 
+//! This module defines the fundamental types used throughout the Titan Engine, 
+//! such as `TitanSQL`.
+
 pub mod sql;
 
 pub use sql::TitanSQL;

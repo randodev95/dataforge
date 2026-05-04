@@ -3,9 +3,19 @@
 Cargo.lock
 
 # Ignore local RocksDB state
-titan_db/
 .titan_db/
+titan_db/
 titan_state/
-*.csv
+
+# Ignore local data artifacts
+tables/
+snapshots/
+
+# Ignore test artifacts
+test_projects/
+test_contracts/
+
+# Misc
+.env
+*.log
 TITAN_SPEC.md
-test_project/*

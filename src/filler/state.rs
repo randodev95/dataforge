@@ -1,12 +1,11 @@
 use sov_schema_db::{define_schema, Schema, DB, schema::{KeyEncoder, KeyDecoder, ValueCodec}, CodecError};
 use crate::fingerprint::LogicHash;
 use serde::{Deserialize, Serialize};
-use anyhow::Result;
+use crate::error::{TitanError, Result};
 use std::path::Path;
 use std::fmt::Debug;
 use rocksdb::Options;
 
-// Define schemas for our state store
 define_schema!(ModelMetadataSchema, LogicHash, ModelMetadata, "model_metadata");
 define_schema!(ModelValueLogSchema, LogicHash, String, "value_log");
 define_schema!(NameHashIndexSchema, String, LogicHash, "name_hash_index");
@@ -18,7 +17,6 @@ pub struct ModelMetadata {
     pub created_at: u64,
 }
 
-// Implement Codecs for LogicHash as Key
 impl KeyEncoder<ModelMetadataSchema> for LogicHash {
     fn encode_key(&self) -> std::result::Result<Vec<u8>, CodecError> {
         Ok(self.as_str().as_bytes().to_vec())
@@ -26,7 +24,8 @@ impl KeyEncoder<ModelMetadataSchema> for LogicHash {
 }
 impl KeyDecoder<ModelMetadataSchema> for LogicHash {
     fn decode_key(data: &[u8]) -> std::result::Result<Self, CodecError> {
-        Ok(LogicHash::new(String::from_utf8(data.to_vec()).map_err(|e| CodecError::Wrapped(e.into()))?))
+        let s = std::str::from_utf8(data).map_err(|e| CodecError::Wrapped(e.into()))?;
+        Ok(LogicHash::new(s.to_string()))
     }
 }
 
@@ -37,11 +36,11 @@ impl KeyEncoder<ModelValueLogSchema> for LogicHash {
 }
 impl KeyDecoder<ModelValueLogSchema> for LogicHash {
     fn decode_key(data: &[u8]) -> std::result::Result<Self, CodecError> {
-        Ok(LogicHash::new(String::from_utf8(data.to_vec()).map_err(|e| CodecError::Wrapped(e.into()))?))
+        let s = std::str::from_utf8(data).map_err(|e| CodecError::Wrapped(e.into()))?;
+        Ok(LogicHash::new(s.to_string()))
     }
 }
 
-// Implement Codecs for String as Key
 impl KeyEncoder<NameHashIndexSchema> for String {
     fn encode_key(&self) -> std::result::Result<Vec<u8>, CodecError> {
         Ok(self.as_bytes().to_vec())
@@ -49,17 +48,16 @@ impl KeyEncoder<NameHashIndexSchema> for String {
 }
 impl KeyDecoder<NameHashIndexSchema> for String {
     fn decode_key(data: &[u8]) -> std::result::Result<Self, CodecError> {
-        Ok(String::from_utf8(data.to_vec()).map_err(|e| CodecError::Wrapped(e.into()))?)
+        std::str::from_utf8(data).map_err(|e| CodecError::Wrapped(e.into())).map(|s| s.to_string())
     }
 }
 
-// Implement Codecs for Values
 impl ValueCodec<ModelMetadataSchema> for ModelMetadata {
     fn encode_value(&self) -> std::result::Result<Vec<u8>, CodecError> {
-        Ok(serde_json::to_vec(self).map_err(|e| CodecError::Wrapped(e.into()))?)
+        serde_json::to_vec(self).map_err(|e| CodecError::Wrapped(e.into()))
     }
     fn decode_value(data: &[u8]) -> std::result::Result<Self, CodecError> {
-        Ok(serde_json::from_slice(data).map_err(|e| CodecError::Wrapped(e.into()))?)
+        serde_json::from_slice(data).map_err(|e| CodecError::Wrapped(e.into()))
     }
 }
 
@@ -68,7 +66,7 @@ impl ValueCodec<ModelValueLogSchema> for String {
         Ok(self.as_bytes().to_vec())
     }
     fn decode_value(data: &[u8]) -> std::result::Result<Self, CodecError> {
-        Ok(String::from_utf8(data.to_vec()).map_err(|e| CodecError::Wrapped(e.into()))?)
+        std::str::from_utf8(data).map_err(|e| CodecError::Wrapped(e.into())).map(|s| s.to_string())
     }
 }
 
@@ -77,7 +75,8 @@ impl ValueCodec<NameHashIndexSchema> for LogicHash {
         Ok(self.as_str().as_bytes().to_vec())
     }
     fn decode_value(data: &[u8]) -> std::result::Result<Self, CodecError> {
-        Ok(LogicHash::new(String::from_utf8(data.to_vec()).map_err(|e| CodecError::Wrapped(e.into()))?))
+        let s = std::str::from_utf8(data).map_err(|e| CodecError::Wrapped(e.into()))?;
+        Ok(LogicHash::new(s.to_string()))
     }
 }
 
@@ -100,7 +99,7 @@ impl StateStore {
                 NameHashIndexSchema::COLUMN_FAMILY_NAME,
             ],
             &options,
-        ).map_err(|e| anyhow::anyhow!("Failed to open RocksDB: {}", e))?;
+        ).map_err(|e| crate::error::TitanError::DatabaseError(e.to_string()))?;
 
         Ok(Self { db })
     }
@@ -111,28 +110,42 @@ impl StateStore {
     }
 
     pub fn put_metadata(&self, env: &str, name: &str, hash: &LogicHash, metadata: &ModelMetadata) -> Result<()> {
-        self.db.put::<ModelMetadataSchema>(hash, metadata)?;
-        self.db.put::<NameHashIndexSchema>(&Self::env_key(env, name), hash)?;
+        let batch = sov_schema_db::SchemaBatch::default();
+        batch.put::<ModelMetadataSchema>(hash, metadata)
+            .map_err(|e| TitanError::StateError(e.to_string()))?;
+        batch.put::<NameHashIndexSchema>(&Self::env_key(env, name), hash)
+            .map_err(|e| TitanError::StateError(e.to_string()))?;
+        
+        self.db.write_schemas(batch)
+            .map_err(|e: anyhow::Error| TitanError::StateError(e.to_string()))?;
         Ok(())
     }
 
     pub fn get_metadata(&self, hash: &LogicHash) -> Result<Option<ModelMetadata>> {
         self.db.get::<ModelMetadataSchema>(hash)
-            .map_err(|e| anyhow::anyhow!("Failed to get metadata: {}", e))
+            .map_err(|e| crate::error::TitanError::DatabaseError(e.to_string()))
     }
 
     pub fn get_hash_by_name(&self, env: &str, name: &str) -> Result<Option<LogicHash>> {
         self.db.get::<NameHashIndexSchema>(&Self::env_key(env, name))
-            .map_err(|e| anyhow::anyhow!("Failed to get hash by name: {}", e))
+            .map_err(|e| crate::error::TitanError::DatabaseError(e.to_string()))
     }
 
     pub fn put_value(&self, hash: &LogicHash, sql: String) -> Result<()> {
         self.db.put::<ModelValueLogSchema>(hash, &sql)
-            .map_err(|e| anyhow::anyhow!("Failed to put value: {}", e))
+            .map_err(|e| crate::error::TitanError::DatabaseError(e.to_string()))
     }
 
     pub fn get_value(&self, hash: &LogicHash) -> Result<Option<String>> {
         self.db.get::<ModelValueLogSchema>(hash)
-            .map_err(|e| anyhow::anyhow!("Failed to get value: {}", e))
+            .map_err(|e| crate::error::TitanError::DatabaseError(e.to_string()))
+    }
+
+    pub fn get_metadata_by_name(&self, env: &str, name: &str) -> Result<Option<ModelMetadata>> {
+        if let Some(hash) = self.get_hash_by_name(env, name)? {
+            self.get_metadata(&hash)
+        } else {
+            Ok(None)
+        }
     }
 }

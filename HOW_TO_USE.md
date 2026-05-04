@@ -1,16 +1,14 @@
 # How to Use Titan Engine
 
-This guide provides step-by-step recipes for the most common tasks in Titan Engine, from initializing a new project to running a complex data materialization pipeline.
+This guide provides step-by-step recipes for production-grade data materialization with Titan. It covers everything from initial setup to high-scale operational control.
 
 ## Prerequisites
 
-Before you begin, ensure you have the following installed:
 - [Rust toolchain](https://rustup.rs/) (v1.80+)
 - [Git](https://git-scm.com/)
+- Environment variables for secrets resolution (optional)
 
 ## Installation
-
-Build the Titan CLI from source:
 
 ```bash
 git clone https://github.com/randodev95/dataforge.git
@@ -18,75 +16,88 @@ cd dataforge
 cargo install --path .
 ```
 
-This will add `titan-engine` (aliased as `titan`) to your PATH.
+## Initializing a Project
 
-## Initializing a New Project
-
-To create a new data engineering project structure:
+Create the standard structure for a data warehouse project:
 
 ```bash
-titan init my_data_warehouse
-cd my_data_warehouse
+titan init my_warehouse
+cd my_warehouse
 ```
 
-This creates a standard project layout:
-- `models/`: Your SQL transformations.
-- `seeds/`: Small static datasets (CSV).
-- `exposures/`: Downstream usage definitions.
-- `profiles.yml`: Environment configurations (dev/prod).
+## Recipe: Secure Secrets Management
 
-## Adding a New Model
+Titan supports environment variable interpolation for sensitive connection strings.
 
-Create a `.sql` file in the `models/` directory. You can use Jinja2-style references to link models together:
+1. Define a secret in your environment:
+   ```bash
+   export DB_PASSWORD=supersecret
+   ```
+2. Reference it in `profiles.yml` using `${VAR}` syntax:
+   ```yaml
+   prod:
+     target_type: delta
+     connection_string: "postgres://user:${DB_PASSWORD}@localhost/db"
+   ```
+
+Titan will resolve the secret at runtime and automatically mask it in all logs (`password=******`).
+
+## Recipe: Operational Control & Scale
+
+### Validating in CI/CD
+Use the `check` command to validate project structure and SQL syntax without executing data:
+
+```bash
+titan check --target prod
+```
+
+### High-Concurrency Execution
+For large DAGs, control the number of parallel tasks using the `--jobs` flag:
+
+```bash
+titan run --target prod --jobs 8
+```
+
+### Real-time Observability
+Enable the built-in Prometheus metrics server to monitor materialization latency and row counts:
+
+```bash
+titan run --target prod --metrics
+```
+Metrics are exposed at `http://localhost:9090`.
+
+## Recipe: Advanced Materialization
+
+### SCD-2 Snapshots
+To track historical changes (Slowly Changing Dimensions Type 2), use the `snapshot` strategy in your model config:
 
 ```sql
--- models/active_users.sql
-SELECT 
-    id, 
-    name 
-FROM {{ ref('raw_users_seed') }} 
-WHERE status = 'active'
+{{ config(
+    materialization='snapshot',
+    unique_key='user_id',
+    retention_days=30
+) }}
+SELECT * FROM users
+```
+Titan will manage `titan_valid_from`, `titan_valid_to`, and `titan_logic_hash` columns automatically.
+
+### Incremental Merges
+For high-volume tables, use `incremental` materialization to perform atomic upserts based on a unique key:
+
+```sql
+{{ config(
+    materialization='incremental',
+    unique_key='event_id',
+    on_schema_change='append'
+) }}
+SELECT * FROM raw_events
 ```
 
-## Running the Pipeline
+## Reliability Features
 
-### 1. Planning Changes
-Use the `plan` command to see what Titan *would* do without executing any DDL:
-
-```bash
-titan plan --target dev
-```
-
-### 2. Executing Transformations
-Run the pipeline to materialize your models in the target environment:
-
-```bash
-titan run --target prod
-```
-
-Titan will:
-- Parse and render your templates.
-- Calculate **Logic Hashes** to determine which models have changed.
-- Orchestrate parallel execution of required models.
-- Perform an **Atomic Pointer Swap** to deploy the new data.
-
-## Verifying Data Quality
-
-Titan supports dbt-style assertions to ensure your data remains clean:
-
-```bash
-titan test --target prod
-```
-
-Common tests include `unique` and `not_null` checks on materialized views.
-
-## Inspecting Project Exposures
-
-To view a summary of how your data is being consumed:
-
-```bash
-titan exposure list
-```
+- **RAII Table Isolation**: Titan uses UUID-based namespacing for temporary tables, ensuring parallel runs never collide.
+- **Atomic State**: All metadata updates are committed to the state store using atomic write batches.
+- **Graceful Shutdown**: Titan handles `SIGINT` (Ctrl+C) gracefully, cancelling the DAG and cleaning up temporary resources before exiting.
 
 ---
 

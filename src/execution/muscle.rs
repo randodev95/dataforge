@@ -1,67 +1,89 @@
 use datafusion::prelude::*;
-use anyhow::Result;
+use crate::error::{TitanError, Result};
 use datafusion::arrow::record_batch::RecordBatch;
-use datafusion::logical_expr::LogicalPlan;
-use tracing::debug;
+use tracing::{debug, info};
+use deltalake::open_table;
+use url::Url;
 
 pub struct Muscle {
-    ctx: SessionContext,
+    pub ctx: SessionContext,
+    pub connectors: crate::connectors::ConnectorRegistry,
 }
 
 impl Muscle {
     pub fn new() -> Self {
         Self {
             ctx: SessionContext::new(),
+            connectors: crate::connectors::ConnectorRegistry::new(),
         }
     }
 
     pub async fn execute(&self, sql: &str) -> Result<()> {
-        let plan = self.ctx.state().create_logical_plan(sql).await
-            .map_err(|e| anyhow::anyhow!("DataFusion planning error: {}", e))?;
+        debug!(sql = %sql, "Executing SQL");
+        let df = self.ctx.sql(sql).await
+            .map_err(|e| {
+                info!(sql = %sql, error = %e, "SQL Planning Failed");
+                TitanError::SqlParseError(e.to_string())
+            })?;
         
-        let optimized_plan = self.rewrite_plan(plan)?;
-        
-        let df = self.ctx.execute_logical_plan(optimized_plan).await
-            .map_err(|e| anyhow::anyhow!("DataFusion SQL error: {}", e))?;
-        
-        let results = df.collect().await
-            .map_err(|e| anyhow::anyhow!("DataFusion execution error: {}", e))?;
-        
-        debug!("Executed SQL. Result rows: {}", results.iter().map(|b| b.num_rows()).sum::<usize>());
+        let _ = df.collect().await
+            .map_err(|e| TitanError::ExecutionError(e.to_string()))?;
         
         Ok(())
     }
 
     pub async fn execute_and_fetch(&self, sql: &str) -> Result<Vec<RecordBatch>> {
-        let plan = self.ctx.state().create_logical_plan(sql).await
-            .map_err(|e| anyhow::anyhow!("DataFusion planning error: {}", e))?;
-        
-        let optimized_plan = self.rewrite_plan(plan)?;
-        
-        let df = self.ctx.execute_logical_plan(optimized_plan).await
-            .map_err(|e| anyhow::anyhow!("DataFusion SQL error: {}", e))?;
+        debug!(sql = %sql, "Executing and fetching SQL");
+        let df = self.ctx.sql(sql).await
+            .map_err(|e| {
+                info!(sql = %sql, error = %e, "SQL Planning Failed");
+                TitanError::SqlParseError(e.to_string())
+            })?;
         
         let results = df.collect().await
-            .map_err(|e| anyhow::anyhow!("DataFusion execution error: {}", e))?;
+            .map_err(|e| TitanError::ExecutionError(e.to_string()))?;
             
         Ok(results)
     }
 
-    /// Rewrites the LogicalPlan to handle structural divergence.
-    fn rewrite_plan(&self, plan: LogicalPlan) -> Result<LogicalPlan> {
-        debug!("Applying structural divergence rewrites to LogicalPlan");
-        Ok(plan)
-    }
-
     pub async fn register_parquet(&self, name: &str, path: &str) -> Result<()> {
+        if self.ctx.table_exist(name).unwrap_or(false) {
+            let _ = self.ctx.deregister_table(name);
+        }
         self.ctx.register_parquet(name, path, ParquetReadOptions::default()).await
-            .map_err(|e| anyhow::anyhow!("Failed to register parquet: {}", e))?;
+            .map_err(|e| TitanError::DatabaseError(e.to_string()))?;
         Ok(())
     }
 
     pub async fn register_csv(&self, name: &str, path: &str) -> Result<()> {
+        if self.ctx.table_exist(name).unwrap_or(false) {
+            let _ = self.ctx.deregister_table(name);
+        }
         self.ctx.register_csv(name, path, CsvReadOptions::default()).await
-            .map_err(|e| anyhow::anyhow!("Failed to register csv: {}", e))?;
+            .map_err(|e| TitanError::DatabaseError(e.to_string()))?;
+        Ok(())
+    }
+
+    pub async fn register_delta(&self, name: &str, path: &str) -> Result<()> {
+        if self.ctx.table_exist(name).unwrap_or(false) {
+            let _ = self.ctx.deregister_table(name);
+        }
+        
+        let abs_path = std::fs::canonicalize(path)
+            .map_err(|e| TitanError::DatabaseError(format!("Invalid path {}: {}", path, e)))?;
+        
+        let url = Url::from_file_path(&abs_path)
+            .map_err(|_| TitanError::DatabaseError(format!("Failed to create URL from path: {:?}", abs_path)))?;
+            
+        let table = open_table(url).await
+            .map_err(|e| TitanError::DatabaseError(e.to_string()))?;
+        
+        let provider = table.table_provider().await
+            .map_err(|e| TitanError::DatabaseError(e.to_string()))?;
+            
+        self.ctx.register_table(name, provider)
+            .map_err(|e| TitanError::DatabaseError(e.to_string()))?;
+        
         Ok(())
     }
 }

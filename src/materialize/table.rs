@@ -1,8 +1,7 @@
-use anyhow::Result;
+use crate::error::Result;
 use std::sync::Arc;
 use crate::execution::Muscle;
 use crate::fingerprint::LogicHash;
-use crate::core::quote_identifier;
 use async_trait::async_trait;
 
 pub struct TableMaterializer {
@@ -11,10 +10,15 @@ pub struct TableMaterializer {
 
 #[async_trait]
 impl super::Materializer for TableMaterializer {
-    async fn materialize(&self, _env: &str, model_name: &str, hash: &LogicHash, sql: &str) -> Result<()> {
-        let table_name = quote_identifier(&format!("{}__{}", model_name, hash));
-        let create_table_sql = format!("CREATE OR REPLACE TABLE {} AS {}", table_name, sql);
-        self.muscle.execute(&create_table_sql).await?;
+    async fn materialize(&self, _env: &str, model_name: &str, hash: &LogicHash, _exec_id: &uuid::Uuid, sql: &str) -> Result<()> {
+        let table_name = format!("{}__{}", model_name, hash);
+        let mut builder = crate::utils::SqlBuilder::new(32 + table_name.len() + sql.len());
+        builder.push_str("CREATE OR REPLACE TABLE ");
+        builder.push_str(&table_name);
+        builder.push_str(" AS ");
+        builder.push_str(sql);
+        
+        self.muscle.execute(&builder.finish()).await?;
         Ok(())
     }
 }

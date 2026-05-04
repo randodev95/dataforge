@@ -9,6 +9,12 @@ pub struct Mapper {
     schema_metadata: SchemaMetadata,
 }
 
+impl Default for Mapper {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Mapper {
     pub fn new() -> Self {
         Self {

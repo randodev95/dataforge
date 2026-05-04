@@ -1,47 +1,43 @@
-use anyhow::Result;
-use crate::execution::Muscle;
+//! # Lifecycle Hooks
+//! 
+//! This module defines and manages execution hooks (on-run-start, on-run-end) 
+//! that allow users to run custom SQL commands at specific pipeline stages.
+
+use serde::{Deserialize, Serialize};
 use std::path::Path;
 use std::fs;
-use tracing::info;
+use anyhow::Result;
+use crate::Muscle;
 
+#[derive(Debug, Serialize, Deserialize, Default)]
 pub struct Hooks {
-    pub start_sql: Option<String>,
-    pub end_sql: Option<String>,
+    #[serde(default)]
+    pub on_run_start: Vec<String>,
+    #[serde(default)]
+    pub on_run_end: Vec<String>,
 }
 
 impl Hooks {
     pub fn load(root: &Path) -> Self {
-        let start_path = root.join("on-run-start.sql");
-        let end_path = root.join("on-run-end.sql");
-
-        Self {
-            start_sql: fs::read_to_string(start_path).ok(),
-            end_sql: fs::read_to_string(end_path).ok(),
+        let hooks_path = root.join("hooks.yaml");
+        if !hooks_path.exists() {
+            return Self::default();
         }
+        
+        let content = fs::read_to_string(hooks_path).unwrap_or_default();
+        serde_yml::from_str(&content).unwrap_or_default()
     }
 
     pub async fn run_start(&self, muscle: &Muscle) -> Result<()> {
-        if let Some(sql) = &self.start_sql {
-            info!("Running on-run-start hook");
-            for stmt in sql.split(';') {
-                let stmt = stmt.trim();
-                if !stmt.is_empty() {
-                    muscle.execute(stmt).await?;
-                }
-            }
+        for sql in &self.on_run_start {
+            muscle.execute(sql).await?;
         }
         Ok(())
     }
 
     pub async fn run_end(&self, muscle: &Muscle) -> Result<()> {
-        if let Some(sql) = &self.end_sql {
-            info!("Running on-run-end hook");
-            for stmt in sql.split(';') {
-                let stmt = stmt.trim();
-                if !stmt.is_empty() {
-                    muscle.execute(stmt).await?;
-                }
-            }
+        for sql in &self.on_run_end {
+            muscle.execute(sql).await?;
         }
         Ok(())
     }

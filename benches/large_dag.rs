@@ -1,5 +1,5 @@
 use criterion::{criterion_group, criterion_main, Criterion};
-use titan_engine::{Filler, StateStore, Muscle, VDE, LogicHash};
+use titan_engine::{Filler, StateStore, Muscle, VDE};
 use titan_engine::filler::dag::ModelTask;
 use titan_engine::materialize::Materialization;
 use std::sync::Arc;
@@ -7,11 +7,11 @@ use std::collections::HashMap;
 use tokio::runtime::Runtime;
 use tempfile::tempdir;
 
-fn large_dag_benchmark(c: &Criterion) {
+fn large_dag_benchmark(c: &mut Criterion) {
     let rt = Runtime::new().unwrap();
     let dir = tempdir().unwrap();
     let state_store = StateStore::open(dir.path()).unwrap();
-    let filler = Filler::new(state_store);
+    let filler = Filler::new(state_store, dir.path(), 4);
     
     let muscle = Arc::new(Muscle::new());
     let vde = Arc::new(VDE::new(muscle.clone()));
@@ -29,7 +29,12 @@ fn large_dag_benchmark(c: &Criterion) {
             vde: vde.clone(),
             parent_names: if i > 0 { vec![format!("model_{}", i-1)] } else { vec![] },
             materialization: Materialization::View,
+            unique_key: None,
+            target_type: "local".to_string(),
+            retention: None,
+            on_schema_change: titan_engine::project::OnSchemaChange::AppendOnly,
             plan_only: true, // benchmark orchestration, not physical execution
+            semaphore: filler.semaphore.clone(),
         });
     }
 

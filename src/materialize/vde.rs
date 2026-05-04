@@ -1,7 +1,6 @@
 use anyhow::Result;
 use crate::fingerprint::LogicHash;
 use crate::execution::Muscle;
-use crate::core::quote_identifier;
 use std::sync::Arc;
 use tracing::{info, debug};
 
@@ -18,13 +17,10 @@ impl VDE {
         let table_name_raw = format!("{}__{}", model_name, hash);
         let view_name_raw = format!("{}_{}", env, model_name);
         
-        let table_name_quoted = quote_identifier(&table_name_raw);
-        let view_name_quoted = quote_identifier(&view_name_raw);
-
         info!(model = %model_name, env = %env, "Performing Atomic Pointer Swap");
         
         // Atomic Pointer Swap (Views over table__hash)
-        let sql = format!("CREATE OR REPLACE VIEW {} AS SELECT * FROM {}", view_name_quoted, table_name_quoted);
+        let sql = format!("CREATE OR REPLACE VIEW {} AS SELECT * FROM {}", view_name_raw, table_name_raw);
         
         self.muscle.execute(&sql).await?;
         
