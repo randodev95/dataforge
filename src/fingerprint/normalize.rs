@@ -2,10 +2,10 @@ use polyglot_sql::{parse_one, generate, DialectType};
 use polyglot_sql::optimizer::{simplify, normalize};
 use anyhow::Result;
 use crate::core::TitanSQL;
+use std::sync::LazyLock;
 use regex::Regex;
-use once_cell::sync::Lazy;
 
-static COMMENT_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"/\*.*?\*/").unwrap());
+static COMMENT_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"/\*.*?\*/").unwrap());
 
 pub struct Normalizer;
 
@@ -35,9 +35,8 @@ impl Normalizer {
                 let single_spaced = stripped.split_whitespace().collect::<Vec<_>>().join(" ");
                 
                 return Ok(TitanSQL::new(single_spaced));
-            } else {
-                last_err = Some(anyhow::anyhow!("Failed to parse SQL with any supported dialect"));
             }
+            last_err = Some(anyhow::anyhow!("Failed to parse SQL with any supported dialect"));
         }
         
         Err(last_err.unwrap())

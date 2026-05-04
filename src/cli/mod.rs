@@ -102,7 +102,7 @@ pub enum ExposureAction {
 
 pub mod setup;
 
-pub async fn handle_init(name: String, path: PathBuf) -> Result<()> {
+pub fn handle_init(name: String, path: PathBuf) -> Result<()> {
     if !path.exists() {
         fs::create_dir_all(&path)?;
     }
@@ -332,7 +332,7 @@ pub async fn handle_test(path: PathBuf, target: String) -> Result<()> {
     Ok(())
 }
 
-pub async fn handle_exposure(path: PathBuf) -> Result<()> {
+pub fn handle_exposure(path: PathBuf) -> Result<()> {
     let exposures = Exposures::load(&path)?;
     println!("{}", serde_json::to_string_pretty(&exposures.items)?);
     Ok(())

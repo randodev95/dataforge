@@ -1,6 +1,5 @@
 use crate::execution::Muscle;
-use crate::error::Result;
-use tracing::{debug, error};
+use tracing::debug;
 
 /// RAII guard for DataFusion table registrations.
 /// 

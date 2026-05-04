@@ -4,7 +4,6 @@ use titan_engine::execution::Muscle;
 use titan_engine::fingerprint::LogicHash;
 use std::sync::Arc;
 use deltalake::open_table;
-use deltalake::datafusion::datasource::TableProvider;
 
 #[tokio::test]
 async fn test_snapshot_scd2_logic() {
@@ -21,14 +20,14 @@ async fn test_snapshot_scd2_logic() {
         vde.clone(), 
         Some("id".to_string()), 
         None, 
-        titan_engine::project::OnSchemaChange::AppendOnly,
         project_root.clone()
     );
 
     // 1. Initial Snapshot
     let hash1 = LogicHash::new("hash1".to_string());
     let sql1 = "SELECT 1 as id, 'A' as val";
-    materializer.materialize(env, model, &hash1, sql1).await.expect("Initial snapshot failed");
+    let exec_id1 = uuid::Uuid::new_v4();
+    materializer.materialize(env, model, &hash1, &exec_id1, sql1).await.expect("Initial snapshot failed");
 
     // Verify 1
     {
@@ -54,7 +53,8 @@ async fn test_snapshot_scd2_logic() {
     // 2. Second Snapshot (Value changed)
     let hash2 = LogicHash::new("hash2".to_string());
     let sql2 = "SELECT 1 as id, 'B' as val";
-    materializer.materialize(env, model, &hash2, sql2).await.expect("Second snapshot failed");
+    let exec_id2 = uuid::Uuid::new_v4();
+    materializer.materialize(env, model, &hash2, &exec_id2, sql2).await.expect("Second snapshot failed");
 
     // 3. Verify SCD-2 state
     let table_path = project_root.join(format!("snapshots/{}/{}", env, model));

@@ -134,10 +134,10 @@ impl IncrementalMaterializer {
 
                 let merge_sql = format!(
                     "
-                    SELECT {cols} FROM {source} s
+                    SELECT {cols} FROM \"{source}\" s
                     UNION ALL
-                    SELECT {t_cols} FROM {target} t
-                    WHERE NOT EXISTS (SELECT 1 FROM {source} s WHERE s.\"{pk}\" = t.\"{pk}\")
+                    SELECT {t_cols} FROM \"{target}\" t
+                    WHERE NOT EXISTS (SELECT 1 FROM \"{source}\" s WHERE s.\"{pk}\" = t.\"{pk}\")
                     ",
                     cols = cols_str,
                     t_cols = target_cols_str,
@@ -169,7 +169,7 @@ impl IncrementalMaterializer {
                 }).collect();
 
                 let row_count: usize = aligned_batches.iter().map(|b| b.num_rows()).sum();
-                let mut write_op = deltalake::DeltaOps(delta_table).write(aligned_batches)
+                let mut write_op = delta_table.write(aligned_batches)
                     .with_save_mode(deltalake::protocol::SaveMode::Overwrite);
                 
                 if !new_fields.is_empty() {
@@ -183,7 +183,7 @@ impl IncrementalMaterializer {
                 let batches = source_df.collect().await.map_err(|e| TitanError::ExecutionError(e.to_string()))?;
                 if batches.is_empty() { return Ok(()); }
                 
-                let _: deltalake::DeltaTable = deltalake::DeltaOps(delta_table).write(batches)
+                let _: deltalake::DeltaTable = delta_table.write(batches)
                     .with_save_mode(deltalake::protocol::SaveMode::Append)
                     .await.map_err(|e: deltalake::errors::DeltaTableError| TitanError::DatabaseError(e.to_string()))?;
             }

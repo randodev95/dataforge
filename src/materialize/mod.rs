@@ -101,7 +101,6 @@ pub fn get_materializer(
             vde, 
             unique_key, 
             retention.map(|r| r.snapshots_days), 
-            on_schema_change,
             project_root
         )),
         Materialization::Ephemeral => MaterializerStrategy::View(view::ViewMaterializer { vde }),

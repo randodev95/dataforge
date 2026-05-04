@@ -55,7 +55,7 @@ async fn main() -> Result<()> {
 
     match cli.command {
         Commands::Init { name, path } => {
-            handle_init(name, path).await?;
+            handle_init(name, path)?;
         }
         Commands::Plan { target, select, state, path, jobs } => {
             handle_pipeline(path, target, select, state, true, jobs).await?;
@@ -72,12 +72,12 @@ async fn main() -> Result<()> {
         Commands::Exposure { action } => {
             match action {
                 ExposureAction::List { path } => {
-                    handle_exposure(path).await?;
+                    handle_exposure(path)?;
                 }
             }
         }
         Commands::Setup { driver, path } => {
-            titan_engine::cli::setup::handle_setup(path, driver).await?;
+            titan_engine::cli::setup::handle_setup(path, driver)?;
         }
     }
 

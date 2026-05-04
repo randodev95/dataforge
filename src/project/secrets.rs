@@ -1,8 +1,8 @@
 use crate::error::{TitanError, Result};
 use regex::Regex;
-use once_cell::sync::Lazy;
+use std::sync::LazyLock;
 
-static ENV_VAR_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r#"\$\{(?P<name>[^}]+)\}"#).expect("Titan: internal regex failure (ENV_VAR_RE)"));
+static ENV_VAR_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\$\{(?P<name>[^}]+)\}").expect("Titan: internal regex failure (ENV_VAR_RE)"));
 
 /// Trait for resolving secrets from various backends.
 pub trait SecretResolver: Send + Sync {

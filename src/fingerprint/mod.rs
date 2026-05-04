@@ -16,7 +16,6 @@ use crate::error::Result;
 use std::collections::HashMap;
 use minijinja::Value;
 use regex::Regex;
-use once_cell::sync::Lazy;
 
 pub struct Fingerprinter {
     engine: TemplateEngine,
@@ -51,7 +50,7 @@ impl Fingerprinter {
             .map_err(|e| crate::error::TitanError::TemplateError(e.to_string()))?;
         
         // Strip config block before normalization
-        static CONFIG_STRIP_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?s)\{\{\s*config\s*\(.*?\)\s*\}\}").unwrap());
+        static CONFIG_STRIP_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| Regex::new(r"(?s)\{\{\s*config\s*\(.*?\)\s*\}\}").unwrap());
         let stripped_sql = CONFIG_STRIP_RE.replace_all(&rendered_sql, "");
 
         let normalized_sql = Normalizer::normalize(&stripped_sql)

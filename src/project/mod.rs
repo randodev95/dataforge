@@ -11,13 +11,13 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::fs;
 use crate::error::{TitanError, Result};
+use std::sync::LazyLock;
 use regex::Regex;
-use once_cell::sync::Lazy;
 
-static REF_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r#"\{\{\s*ref\(['"]([^'"]+)['"]\)\s*\}\}"#).expect("Titan: internal regex failure (REF_RE)"));
-static SOURCE_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r#"\{\{\s*source\(['"]([^'"]+)['"]\s*,\s*['"]([^'"]+)['"]\)\s*\}\}"#).expect("Titan: internal regex failure (SOURCE_RE)"));
+static REF_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"\{\{\s*ref\(['"]([^'"]+)['"]\)\s*\}\}"#).expect("Titan: internal regex failure (REF_RE)"));
+static SOURCE_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"\{\{\s*source\(['"]([^'"]+)['"]\s*,\s*['"]([^'"]+)['"]\)\s*\}\}"#).expect("Titan: internal regex failure (SOURCE_RE)"));
 
-static CONFIG_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r#"\{\{\s*config\s*\(\s*materialized\s*=\s*['"]([^'"]+)['"]\s*(?:,\s*unique_key\s*=\s*['"]([^'"]+)['"]\s*)?(?:,\s*on_schema_change\s*=\s*['"]([^'"]+)['"]\s*)?\)\s*\}\}"#).expect("Titan: internal regex failure (CONFIG_RE)"));
+static CONFIG_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"\{\{\s*config\s*\(\s*materialized\s*=\s*['"]([^'"]+)['"]\s*(?:,\s*unique_key\s*=\s*['"]([^'"]+)['"]\s*)?(?:,\s*on_schema_change\s*=\s*['"]([^'"]+)['"]\s*)?\)\s*\}\}"#).expect("Titan: internal regex failure (CONFIG_RE)"));
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SourceConfig {

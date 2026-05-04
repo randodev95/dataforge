@@ -1,9 +1,9 @@
-use prometheus::{Counter, Histogram, Registry, opts, register_counter_vec, register_histogram_vec, CounterVec, HistogramVec};
-use once_cell::sync::Lazy;
+use prometheus::{Counter, Registry, opts, register_counter_vec, register_histogram_vec, CounterVec, HistogramVec};
+use std::sync::LazyLock;
 
-pub static REGISTRY: Lazy<Registry> = Lazy::new(|| Registry::new());
+pub static REGISTRY: LazyLock<Registry> = LazyLock::new(Registry::new);
 
-pub static MATERIALIZATIONS_TOTAL: Lazy<CounterVec> = Lazy::new(|| {
+pub static MATERIALIZATIONS_TOTAL: LazyLock<CounterVec> = LazyLock::new(|| {
     register_counter_vec!(
         opts!(
             "titan_materializations_total",
@@ -13,7 +13,7 @@ pub static MATERIALIZATIONS_TOTAL: Lazy<CounterVec> = Lazy::new(|| {
     ).expect("Can't register MATERIALIZATIONS_TOTAL")
 });
 
-pub static MATERIALIZATION_LATENCY_SECONDS: Lazy<HistogramVec> = Lazy::new(|| {
+pub static MATERIALIZATION_LATENCY_SECONDS: LazyLock<HistogramVec> = LazyLock::new(|| {
     register_histogram_vec!(
         "titan_materialization_latency_seconds",
         "Time taken to materialize models",
@@ -21,7 +21,7 @@ pub static MATERIALIZATION_LATENCY_SECONDS: Lazy<HistogramVec> = Lazy::new(|| {
     ).expect("Can't register MATERIALIZATION_LATENCY_SECONDS")
 });
 
-pub static ROWS_WRITTEN_TOTAL: Lazy<CounterVec> = Lazy::new(|| {
+pub static ROWS_WRITTEN_TOTAL: LazyLock<CounterVec> = LazyLock::new(|| {
     register_counter_vec!(
         opts!(
             "titan_rows_written_total",
@@ -31,7 +31,7 @@ pub static ROWS_WRITTEN_TOTAL: Lazy<CounterVec> = Lazy::new(|| {
     ).expect("Can't register ROWS_WRITTEN_TOTAL")
 });
 
-pub static STATE_STORE_ERRORS_TOTAL: Lazy<Counter> = Lazy::new(|| {
+pub static STATE_STORE_ERRORS_TOTAL: LazyLock<Counter> = LazyLock::new(|| {
     prometheus::register_counter!(
         opts!(
             "titan_state_store_errors_total",

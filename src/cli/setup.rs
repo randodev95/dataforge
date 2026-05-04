@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use std::fs;
 use tracing::info;
 
-pub async fn handle_setup(project_root: PathBuf, drivers: Vec<String>) -> Result<()> {
+pub fn handle_setup(project_root: PathBuf, drivers: Vec<String>) -> Result<()> {
     let drivers_dir = project_root.join(".titan").join("drivers");
     fs::create_dir_all(&drivers_dir)?;
 

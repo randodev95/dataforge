@@ -3,6 +3,26 @@ name = "titan-engine"
 version = "0.1.0"
 edition = "2024"
 
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(feature, values("clippy"))'] }
+
+[lints.clippy]
+perf = "warn"
+pedantic = "warn"
+must_use_candidate = "allow"
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+module_name_repetitions = "allow"
+cast_possible_truncation = "allow"
+doc_markdown = "allow"
+similar_names = "allow"
+too_many_lines = "allow"
+struct_excessive_bools = "allow"
+needless_pass_by_value = "allow"
+exhaustive_enums = "allow"
+exhaustive_structs = "allow"
+multiple_crate_versions = "allow"
+
 [dependencies]
 anyhow = "1.0.102"
 async-trait = "0.1.86"

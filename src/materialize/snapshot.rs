@@ -12,7 +12,6 @@ use std::path::PathBuf;
 use datafusion::datasource::TableProvider;
 use deltalake::arrow::datatypes::{Schema, Field};
 
-use crate::project::OnSchemaChange;
 
 /// Materializer for SCD-2 (Slowly Changing Dimensions Type 2) Snapshots in Delta Lake.
 /// 
@@ -22,7 +21,6 @@ pub struct SnapshotMaterializer {
     muscle: Arc<Muscle>,
     unique_key: Option<String>,
     retention_days: Option<i64>,
-    on_schema_change: OnSchemaChange,
     base_path: PathBuf,
 }
 
@@ -32,10 +30,9 @@ impl SnapshotMaterializer {
         _vde: Arc<VDE>, 
         unique_key: Option<String>, 
         retention_days: Option<i64>, 
-        on_schema_change: OnSchemaChange,
         base_path: PathBuf,
     ) -> Self {
-        Self { muscle, unique_key, retention_days, on_schema_change, base_path }
+        Self { muscle, unique_key, retention_days, base_path }
     }
 }
 
@@ -90,7 +87,7 @@ impl SnapshotMaterializer {
             let cols_str = cols.join(", ");
 
             let init_sql = format!(
-                "SELECT {}, '{}' as titan_logic_hash, {} as titan_valid_from, CAST(NULL AS BIGINT) as titan_valid_to FROM {}",
+                "SELECT {}, '{}' as titan_logic_hash, {} as titan_valid_from, CAST(NULL AS BIGINT) as titan_valid_to FROM \"{}\"",
                 cols_str, hash.as_str(), now, source_view
             );
             
@@ -199,18 +196,18 @@ impl SnapshotMaterializer {
             let merge_sql = format!(
                 "
                 -- 1. Unchanged or already expired rows: Keep as is
-                SELECT {all} FROM {snapshot} c
+                SELECT {all} FROM \"{snapshot}\" c
                 WHERE c.titan_valid_to IS NOT NULL 
                 OR (c.titan_valid_to IS NULL AND c.titan_logic_hash = '{hash}')
                 UNION ALL
                 -- 2. Active records that need expiring (hash changed or row deleted)
-                SELECT {expiring} FROM {snapshot} c
+                SELECT {expiring} FROM \"{snapshot}\" c
                 WHERE c.titan_valid_to IS NULL AND c.titan_logic_hash != '{hash}'
                 UNION ALL
                 -- 3. New records from source that don't match any active row hash
-                SELECT {new_rows} FROM {source} s
+                SELECT {new_rows} FROM \"{source}\" s
                 WHERE NOT EXISTS (
-                    SELECT 1 FROM {snapshot} c 
+                    SELECT 1 FROM \"{snapshot}\" c 
                     WHERE s.\"{pk}\" = c.\"{pk}\" AND c.titan_valid_to IS NULL AND c.titan_logic_hash = '{hash}'
                 )
                 ",
@@ -257,7 +254,7 @@ impl SnapshotMaterializer {
             }).collect();
 
             let row_count: usize = aligned_batches.iter().map(|b| b.num_rows()).sum();
-            let mut write_op = deltalake::DeltaOps(delta_table).write(aligned_batches)
+            let mut write_op = delta_table.write(aligned_batches)
                 .with_save_mode(deltalake::protocol::SaveMode::Overwrite);
             
             if !new_fields.is_empty() {
