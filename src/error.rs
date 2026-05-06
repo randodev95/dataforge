@@ -1,6 +1,6 @@
 //! # Titan Error Handling
-//! 
-//! This module defines the central `TitanError` type, providing 
+//!
+//! This module defines the central `TitanError` type, providing
 //! structured, library-grade error propagation across the engine.
 
 use thiserror::Error;

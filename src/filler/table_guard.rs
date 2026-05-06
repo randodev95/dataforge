@@ -2,8 +2,8 @@ use crate::execution::Muscle;
 use tracing::debug;
 
 /// RAII guard for DataFusion table registrations.
-/// 
-/// Ensures that a table registered in the SessionContext is automatically 
+///
+/// Ensures that a table registered in the SessionContext is automatically
 /// deregistered when the guard is dropped.
 pub struct TableGuard {
     muscle: std::sync::Arc<Muscle>,

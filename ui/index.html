@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TITAN | Mission Control</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="glass-overlay"></div>
+    
+    <nav class="sidebar">
+        <div class="logo">
+            <span class="logo-icon">▲</span>
+            <span class="logo-text">TITAN</span>
+        </div>
+        <ul class="nav-links">
+            <li class="active" data-view="dashboard">
+                <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
+                <span>Dashboard</span>
+            </li>
+            <li data-view="lineage">
+                <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none"><path d="M22 12h-4l-3 9L9 3l-3 9H2"></path></svg>
+                <span>Lineage</span>
+            </li>
+            <li data-view="audit">
+                <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y1="13"></line><line x1="16" y1="17" x2="8" y1="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+                <span>Audit Logs</span>
+            </li>
+        </ul>
+        <div class="sidebar-footer">
+            <div class="status-indicator">
+                <div class="pulse"></div>
+                <span>Engine Online</span>
+            </div>
+        </div>
+    </nav>
+
+    <main class="content">
+        <header class="top-bar">
+            <div class="search-container">
+                <input type="text" placeholder="Search models, tables, or audit IDs...">
+            </div>
+            <div class="env-selector">
+                <span class="label">ENV:</span>
+                <select id="target-env">
+                    <option value="dev">DEV_PREFIX</option>
+                    <option value="prod">PROD_PREFIX</option>
+                </select>
+            </div>
+        </header>
+
+        <section id="dashboard-view" class="view active">
+            <!-- Existing dashboard content -->
+            <div class="metrics-grid">
+                <div class="metric-card glass">
+                    <span class="metric-label">Total Models</span>
+                    <span class="metric-value" id="stat-total-models">--</span>
+                    <span class="metric-trend up">+2 since last commit</span>
+                </div>
+                <div class="metric-card glass">
+                    <span class="metric-label">Avg. Latency</span>
+                    <span class="metric-value" id="stat-avg-latency">--ms</span>
+                    <span class="metric-trend down">-14% optimization</span>
+                </div>
+                <div class="metric-card glass">
+                    <span class="metric-label">Rows Processed</span>
+                    <span class="metric-value" id="stat-total-rows">--</span>
+                    <span class="metric-trend">24h aggregate</span>
+                </div>
+                <div class="metric-card glass">
+                    <span class="metric-label">Health Score</span>
+                    <span class="metric-value highlight">98.4%</span>
+                    <span class="metric-trend">SLA compliant</span>
+                </div>
+            </div>
+
+            <div class="main-grid">
+                <div class="chart-container glass">
+                    <div class="chart-header">
+                        <h3>Throughput Velocity</h3>
+                        <div class="chart-actions">
+                            <button class="btn-sm">Rows</button>
+                            <button class="btn-sm active">Duration</button>
+                        </div>
+                    </div>
+                    <canvas id="throughputChart"></canvas>
+                </div>
+
+                <div class="recent-models glass">
+                    <div class="section-header">
+                        <h3>Recent Materializations</h3>
+                        <a href="#" class="view-all">View DAG</a>
+                    </div>
+                    <div class="model-list" id="model-list">
+                        <!-- Dynamically populated -->
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="lineage-view" class="view">
+            <div class="lineage-container glass">
+                <div class="lineage-header">
+                    <h3>Column Lineage Explorer</h3>
+                    <div class="lineage-controls">
+                        <select id="lineage-model-select">
+                            <option value="fct_orders">fct_orders</option>
+                            <option value="dim_users">dim_users</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="lineage-canvas" id="lineage-canvas">
+                    <!-- Lineage nodes will be injected here -->
+                    <div class="lineage-placeholder">Select a model to visualize its upstream heritage</div>
+                </div>
+            </div>
+        </section>
+
+        <section id="audit-view" class="view">
+            <div class="audit-section glass full-width">
+                <div class="section-header">
+                    <h3>Historical Audit Stream</h3>
+                    <div class="audit-actions">
+                        <button class="btn-sm active">All</button>
+                        <button class="btn-sm">Failures</button>
+                    </div>
+                </div>
+                <div class="table-container">
+                    <table id="audit-table">
+                        <thead>
+                            <tr>
+                                <th>Timestamp</th>
+                                <th>Model</th>
+                                <th>Status</th>
+                                <th>Rows</th>
+                                <th>Duration</th>
+                                <th>Hash</th>
+                            </tr>
+                        </thead>
+                        <tbody id="audit-body-full">
+                            <!-- Dynamically populated -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <script src="app.js"></script>
+</body>
+</html>

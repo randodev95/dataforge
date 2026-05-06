@@ -1,8 +1,8 @@
-use anyhow::Result;
-use crate::fingerprint::LogicHash;
 use crate::execution::Muscle;
+use crate::fingerprint::LogicHash;
+use anyhow::Result;
 use std::sync::Arc;
-use tracing::{info, debug};
+use tracing::{debug, info};
 
 pub struct VDE {
     pub muscle: Arc<Muscle>,
@@ -13,35 +13,44 @@ impl VDE {
         Self { muscle }
     }
 
-    pub async fn materialization_swap(&self, env: &str, model_name: &str, hash: &LogicHash) -> Result<()> {
-        let table_name_raw = format!("{}__{}", model_name, hash);
-        let view_name_raw = format!("{}_{}", env, model_name);
-        
+    pub async fn materialization_swap(
+        &self,
+        env: &str,
+        model_name: &str,
+        hash: &LogicHash,
+    ) -> Result<()> {
+        let table_name_raw = format!("{model_name}__{hash}");
+        let view_name_raw = format!("{env}_{model_name}");
+
         info!(model = %model_name, env = %env, "Performing Atomic Pointer Swap");
-        
+
         // Atomic Pointer Swap (Views over table__hash)
-        let sql = format!("CREATE OR REPLACE VIEW {} AS SELECT * FROM {}", view_name_raw, table_name_raw);
-        
+        let sql =
+            format!("CREATE OR REPLACE VIEW {view_name_raw} AS SELECT * FROM {table_name_raw}");
+
         self.muscle.execute(&sql).await?;
-        
-        self.verify_swap(env, &view_name_raw, &table_name_raw).await?;
-        
+
+        self.verify_swap(env, &view_name_raw, &table_name_raw)
+            .await?;
+
         debug!(view = %view_name_raw, target = %table_name_raw, "Pointer swap completed and verified");
-        
+
         Ok(())
     }
 
     async fn verify_swap(&self, _env: &str, view_name: &str, expected_table: &str) -> Result<()> {
         debug!(view = %view_name, "Verifying pointer swap");
-        
+
         let check_sql = format!(
-            "SELECT table_name FROM information_schema.views WHERE table_name = '{}' AND view_definition LIKE '%{}%'",
-            view_name, expected_table
+            "SELECT table_name FROM information_schema.views WHERE table_name = '{view_name}' AND view_definition LIKE '%{expected_table}%'"
         );
 
         match self.muscle.execute_and_fetch(&check_sql).await {
             Ok(results) => {
-                let row_count = results.iter().map(|b| b.num_rows()).sum::<usize>();
+                let row_count = results
+                    .iter()
+                    .map(datafusion::arrow::array::RecordBatch::num_rows)
+                    .sum::<usize>();
                 if row_count == 0 {
                     debug!(view = %view_name, "Verification: No matching view found in INFORMATION_SCHEMA (might be delayed)");
                 } else {
@@ -49,7 +58,10 @@ impl VDE {
                 }
             }
             Err(e) => {
-                debug!("Verification: INFORMATION_SCHEMA check failed or not supported: {}", e);
+                debug!(
+                    "Verification: INFORMATION_SCHEMA check failed or not supported: {}",
+                    e
+                );
             }
         }
 

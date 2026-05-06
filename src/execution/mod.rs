@@ -1,6 +1,6 @@
 //! # Physical Execution
-//! 
-//! This module manages the physical execution environment, including 
+//!
+//! This module manages the physical execution environment, including
 //! the DataFusion `SessionContext` and external connectors.
 
 pub mod muscle;

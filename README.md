@@ -10,9 +10,10 @@
 - **Vectorized Execution**: Native support for high-throughput data processing via DataFusion and Arrow.
 - **Atomic SCD-2 Snapshots**: Built-in support for Slowly Changing Dimensions (Type 2) with historical window tracking.
 - **Secure Secrets Management**: Environment variable interpolation (`${VAR}`) and automatic credential masking in logs.
-- **Real-time Observability**: Embedded Prometheus metrics server for tracking materialization latency and row counts.
-- **Intelligent Orchestration**: Parallel DAG execution with RAII table isolation and logic-hash change tracking.
-- **Deployability**: Built-in `titan check` command for CI/CD validation without execution.
+- **Mission Control Dashboard**: Premium dark-mode UI for real-time monitoring of pipeline health, throughput, and audit streams.
+- **Column-Level Lineage**: Interactive heritage tracing across models with transformation-aware dependency mapping.
+- **Production Hardening**: Zero-panic execution paths, comprehensive error handling, and FAANG-grade reliability patterns.
+- **Scalable Observability**: Integrated Prometheus metrics server and a deep-history Audit Explorer.
 
 ## 🛡️ Why Titan?
 

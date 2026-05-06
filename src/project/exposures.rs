@@ -1,12 +1,12 @@
 //! # Pipeline Exposures
-//! 
-//! This module handles the loading and management of downstream exposures 
+//!
+//! This module handles the loading and management of downstream exposures
 //! (e.g. dashboards, ML models) defined in YAML.
 
-use serde::{Deserialize, Serialize};
-use std::path::Path;
-use std::fs;
 use anyhow::Result;
+use serde::{Deserialize, Serialize};
+use std::fs;
+use std::path::Path;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Exposure {
@@ -29,7 +29,10 @@ impl Exposures {
             for entry in fs::read_dir(exposures_dir)? {
                 let entry = entry?;
                 let path = entry.path();
-                if path.extension().is_some_and(|ext| ext == "yml" || ext == "yaml") {
+                if path
+                    .extension()
+                    .is_some_and(|ext| ext == "yml" || ext == "yaml")
+                {
                     let content = fs::read_to_string(path)?;
                     let exposure: Exposure = serde_yml::from_str(&content)?;
                     items.push(exposure);

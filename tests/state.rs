@@ -12,11 +12,17 @@ fn test_metadata_roundtrip() {
         created_at: 100,
     };
 
-    env.state_store.put_metadata("dev", "model", &hash, &metadata).unwrap();
+    env.state_store
+        .put_metadata("dev", "model", &hash, &metadata)
+        .unwrap();
     let retrieved = env.state_store.get_metadata(&hash).unwrap().unwrap();
     assert_eq!(retrieved.status, "success");
-    
-    let retrieved_hash = env.state_store.get_hash_by_name("dev", "model").unwrap().unwrap();
+
+    let retrieved_hash = env
+        .state_store
+        .get_hash_by_name("dev", "model")
+        .unwrap()
+        .unwrap();
     assert_eq!(retrieved_hash, hash);
 }
 

@@ -1,6 +1,6 @@
 use anyhow::Result;
-use std::path::PathBuf;
 use std::fs;
+use std::path::PathBuf;
 use tracing::info;
 
 pub fn handle_setup(project_root: PathBuf, drivers: Vec<String>) -> Result<()> {
@@ -17,18 +17,22 @@ pub fn handle_setup(project_root: PathBuf, drivers: Vec<String>) -> Result<()> {
                 // For now, we simulate the path
                 let driver_path = drivers_dir.join("libadbc_driver_postgres.so");
                 if !driver_path.exists() {
-                    info!("Driver not found. Please place libadbc_driver_postgres.so in .titan/drivers/");
+                    info!(
+                        "Driver not found. Please place libadbc_driver_postgres.so in .titan/drivers/"
+                    );
                 }
             }
             "snowflake" => {
                 info!("Setting up ADBC Snowflake driver...");
                 let driver_path = drivers_dir.join("libadbc_driver_snowflake.so");
                 if !driver_path.exists() {
-                    info!("Driver not found. Please place libadbc_driver_snowflake.so in .titan/drivers/");
+                    info!(
+                        "Driver not found. Please place libadbc_driver_snowflake.so in .titan/drivers/"
+                    );
                 }
             }
             _ => {
-                return Err(anyhow::anyhow!("Unsupported driver: {}", driver));
+                return Err(anyhow::anyhow!("Unsupported driver: {driver}"));
             }
         }
     }

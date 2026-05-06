@@ -15,6 +15,9 @@ impl TestEnv {
     pub fn new() -> Self {
         let db_dir = tempfile::tempdir().unwrap();
         let state_store = titan_engine::StateStore::open(db_dir.path()).unwrap();
-        Self { state_store, db_dir }
+        Self {
+            state_store,
+            db_dir,
+        }
     }
 }

@@ -66,6 +66,18 @@ titan run --target prod --metrics
 ```
 Metrics are exposed at `http://localhost:9090`.
 
+### Mission Control Dashboard
+Titan includes a high-fidelity web dashboard for real-time monitoring and lineage exploration.
+
+1. **Serve the UI**:
+   ```bash
+   cd ui && python3 -m http.server 8000
+   ```
+2. **Access Mission Control**: Navigate to `http://localhost:8000` to view:
+   - **Performance Charts**: Real-time throughput velocity.
+   - **Column Lineage**: Interactive heritage tracing for every model.
+   - **Audit Logs**: Deep history explorer for the `titan_audit` Delta stream.
+
 ## Recipe: Advanced Materialization
 
 ### SCD-2 Snapshots

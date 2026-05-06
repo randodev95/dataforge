@@ -1,9 +1,9 @@
+use crate::filler::dag::ModelTask;
+use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::path::Path;
 use std::fs;
-use anyhow::Result;
-use crate::filler::dag::ModelTask;
+use std::path::Path;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ManifestNode {
@@ -29,12 +29,15 @@ impl Manifest {
     pub fn generate(project_name: String, tasks: &[ModelTask]) -> Self {
         let mut nodes = HashMap::new();
         for task in tasks {
-            nodes.insert(task.name.clone(), ManifestNode {
-                name: task.name.clone(),
-                raw_sql: task.raw_sql.clone(),
-                dependencies: task.parent_names.clone(),
-                materialization: format!("{:?}", task.materialization),
-            });
+            nodes.insert(
+                task.name.clone(),
+                ManifestNode {
+                    name: task.name.clone(),
+                    raw_sql: task.raw_sql.clone(),
+                    dependencies: task.parent_names.clone(),
+                    materialization: format!("{:?}", task.materialization),
+                },
+            );
         }
 
         Self {
@@ -59,7 +62,7 @@ impl Manifest {
     pub fn save(&self, project_root: &Path) -> Result<()> {
         let target_dir = project_root.join("target");
         fs::create_dir_all(&target_dir)?;
-        
+
         let json = serde_json::to_string_pretty(self)?;
         fs::write(target_dir.join("manifest.json"), json)?;
         Ok(())

@@ -1,6 +1,6 @@
 //! # Shared Utilities
-//! 
-//! This module provides shared helper functions for performance timing, 
+//!
+//! This module provides shared helper functions for performance timing,
 //! SQL construction, and other common cross-cutting concerns.
 
 /// Efficient SQL query builder with pre-allocated buffer.

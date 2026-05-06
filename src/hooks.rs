@@ -1,13 +1,13 @@
 //! # Lifecycle Hooks
-//! 
-//! This module defines and manages execution hooks (on-run-start, on-run-end) 
+//!
+//! This module defines and manages execution hooks (on-run-start, on-run-end)
 //! that allow users to run custom SQL commands at specific pipeline stages.
 
-use serde::{Deserialize, Serialize};
-use std::path::Path;
-use std::fs;
-use anyhow::Result;
 use crate::Muscle;
+use anyhow::Result;
+use serde::{Deserialize, Serialize};
+use std::fs;
+use std::path::Path;
 
 #[derive(Debug, Serialize, Deserialize, Default)]
 pub struct Hooks {
@@ -23,7 +23,7 @@ impl Hooks {
         if !hooks_path.exists() {
             return Self::default();
         }
-        
+
         let content = fs::read_to_string(hooks_path).unwrap_or_default();
         serde_yml::from_str(&content).unwrap_or_default()
     }

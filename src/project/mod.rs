@@ -1,23 +1,31 @@
 //! # Project Management
-//! 
-//! This module handles the loading, parsing, and management of Titan projects, 
+//!
+//! This module handles the loading, parsing, and management of Titan projects,
 //! including `config.yaml`, `profiles.yml`, and `schema.yml`.
 
-pub mod profiles;
 pub mod exposures;
+pub mod profiles;
 pub mod secrets;
+use crate::error::{Result, TitanError};
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
-use std::path::{Path, PathBuf};
 use std::fs;
-use crate::error::{TitanError, Result};
+use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
-use regex::Regex;
 
-static REF_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"\{\{\s*ref\(['"]([^'"]+)['"]\)\s*\}\}"#).expect("Titan: internal regex failure (REF_RE)"));
-static SOURCE_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"\{\{\s*source\(['"]([^'"]+)['"]\s*,\s*['"]([^'"]+)['"]\)\s*\}\}"#).expect("Titan: internal regex failure (SOURCE_RE)"));
+static REF_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"\{\{\s*ref\(['"]([^'"]+)['"]\)\s*\}\}"#)
+        .expect("Titan: internal regex failure (REF_RE)")
+});
+static SOURCE_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"\{\{\s*source\(['"]([^'"]+)['"]\s*,\s*['"]([^'"]+)['"]\)\s*\}\}"#)
+        .expect("Titan: internal regex failure (SOURCE_RE)")
+});
 
-static CONFIG_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"\{\{\s*config\s*\(\s*materialized\s*=\s*['"]([^'"]+)['"]\s*(?:,\s*unique_key\s*=\s*['"]([^'"]+)['"]\s*)?(?:,\s*on_schema_change\s*=\s*['"]([^'"]+)['"]\s*)?\)\s*\}\}"#).expect("Titan: internal regex failure (CONFIG_RE)"));
+static CONFIG_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"\{\{\s*config\s*\(\s*materialized\s*=\s*['"]([^'"]+)['"]\s*(?:,\s*unique_key\s*=\s*['"]([^'"]+)['"]\s*)?(?:,\s*on_schema_change\s*=\s*['"]([^'"]+)['"]\s*)?(?:,\s*partition_by\s*=\s*['"]([^'"]+)['"]\s*)?\)\s*\}\}"#).expect("Titan: internal regex failure (CONFIG_RE)")
+});
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SourceConfig {
@@ -31,7 +39,10 @@ pub struct SourceConfig {
 }
 
 impl SourceConfig {
-    pub fn resolved_connection_string(&self, resolver: &impl secrets::SecretResolver) -> Result<Option<String>> {
+    pub fn resolved_connection_string(
+        &self,
+        resolver: &impl secrets::SecretResolver,
+    ) -> Result<Option<String>> {
         match &self.connection_string {
             Some(s) => Ok(Some(resolver.resolve(s)?)),
             None => Ok(None),
@@ -77,12 +88,16 @@ pub struct ModelFile {
     pub on_schema_change: OnSchemaChange,
     pub contract_enforced: bool,
     pub columns: Vec<ModelColumn>,
+    pub partition_by: Option<String>,
+    pub unit_tests: Vec<crate::quality::unit_test::UnitTest>,
 }
 
 #[derive(Debug, Clone)]
 pub struct ModelColumn {
     pub name: String,
     pub data_type: Option<String>,
+    pub tests: Vec<YamlTest>,
+    pub masking: Option<crate::core::masking::MaskStrategy>,
 }
 
 #[derive(Debug, Clone)]
@@ -115,7 +130,10 @@ struct SchemaModel {
     name: String,
     #[serde(default)]
     pub config: Option<SchemaConfig>,
+    #[serde(default)]
     pub columns: Vec<SchemaColumn>,
+    #[serde(default)]
+    pub unit_tests: Vec<crate::quality::unit_test::UnitTest>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -124,6 +142,8 @@ struct SchemaColumn {
     pub data_type: Option<String>,
     #[serde(default)]
     pub tests: Vec<YamlTest>,
+    #[serde(default)]
+    pub masking: Option<crate::core::masking::MaskStrategy>,
 }
 
 pub struct Project {
@@ -136,14 +156,14 @@ pub struct Project {
 impl Project {
     pub fn load(root: &Path) -> Result<Self> {
         let config_path = root.join("config.yaml");
-        let config_content = fs::read_to_string(config_path)
-            .map_err(TitanError::IoError)?;
+        let config_content = fs::read_to_string(config_path).map_err(TitanError::IoError)?;
         let config: ProjectConfig = serde_yml::from_str(&config_content)
             .map_err(|e| TitanError::ProjectLoadError(e.to_string()))?;
 
         let mut models = Vec::new();
         let mut schemas = HashMap::new();
         let mut contracts = HashMap::new();
+        let mut unit_tests_map = HashMap::new();
 
         // Parse schema.yml if it exists
         let schema_path = root.join("models/schema.yml");
@@ -155,9 +175,12 @@ impl Project {
                 let mut col_tests = Vec::new();
                 let mut model_cols = Vec::new();
                 for c in &m.columns {
+                    crate::intern::intern(&c.name);
                     model_cols.push(ModelColumn {
                         name: c.name.clone(),
                         data_type: c.data_type.clone(),
+                        tests: c.tests.clone(),
+                        masking: c.masking,
                     });
                     for t in &c.tests {
                         col_tests.push(ColumnTest {
@@ -167,7 +190,11 @@ impl Project {
                     }
                 }
                 schemas.insert(m.name.clone(), col_tests);
-                contracts.insert(m.name, (m.config.map(|c| c.enforced).unwrap_or(false), model_cols));
+                contracts.insert(
+                    m.name.clone(),
+                    (m.config.is_some_and(|c| c.enforced), model_cols),
+                );
+                unit_tests_map.insert(m.name, m.unit_tests);
             }
         }
 
@@ -179,11 +206,17 @@ impl Project {
                 let path = entry.path();
                 if path.extension().is_some_and(|ext| ext == "sql") {
                     let raw_sql = fs::read_to_string(&path)?;
-                    let name = path.file_stem()
+                    let name = path
+                        .file_stem()
                         .and_then(|s| s.to_str())
-                        .ok_or_else(|| TitanError::ProjectLoadError(format!("Invalid model filename: {:?}", path)))?
+                        .ok_or_else(|| {
+                            TitanError::ProjectLoadError(format!(
+                                "Invalid model filename: {path:?}"
+                            ))
+                        })?
                         .to_string();
-                    
+                    crate::intern::intern(&name);
+
                     let mut dependencies = HashSet::new();
                     for cap in REF_RE.captures_iter(&raw_sql) {
                         dependencies.insert(cap[1].to_string());
@@ -194,8 +227,9 @@ impl Project {
 
                     let mut materialization_type = "view".to_string();
                     let mut unique_key = None;
+                    let mut partition_by = None;
                     let mut on_schema_change = OnSchemaChange::default();
-                    
+
                     if let Some(cap) = CONFIG_RE.captures(&raw_sql) {
                         materialization_type = cap[1].to_string();
                         if let Some(k) = cap.get(2) {
@@ -208,12 +242,19 @@ impl Project {
                                 _ => OnSchemaChange::AppendOnly,
                             };
                         }
+                        if let Some(p) = cap.get(4) {
+                            partition_by = Some(p.as_str().to_string());
+                        }
                     }
 
                     let tests = schemas.get(&name).cloned().unwrap_or_default();
-                    let (contract_enforced, columns) = contracts.get(&name).cloned().unwrap_or((false, Vec::new()));
+                    let (contract_enforced, columns) =
+                        contracts.get(&name).cloned().unwrap_or((false, Vec::new()));
+                    let unit_tests = unit_tests_map.get(&name).cloned().unwrap_or_default();
                     use std::str::FromStr;
-                    let materialization = crate::materialize::Materialization::from_str(&materialization_type).unwrap_or(crate::materialize::Materialization::View);
+                    let materialization =
+                        crate::materialize::Materialization::from_str(&materialization_type)
+                            .unwrap_or(crate::materialize::Materialization::View);
 
                     models.push(ModelFile {
                         name,
@@ -226,6 +267,8 @@ impl Project {
                         on_schema_change,
                         contract_enforced,
                         columns,
+                        partition_by,
+                        unit_tests,
                     });
                 }
             }
@@ -253,7 +296,8 @@ impl Project {
 
     pub fn filter_models(&self, pattern: &str) -> Vec<&ModelFile> {
         let mut selected = HashSet::new();
-        let name_to_model: HashMap<String, &ModelFile> = self.models.iter().map(|m| (m.name.clone(), m)).collect();
+        let name_to_model: HashMap<String, &ModelFile> =
+            self.models.iter().map(|m| (m.name.clone(), m)).collect();
 
         if let Some(target) = pattern.strip_prefix('+') {
             // +model (Ancestors)
@@ -272,12 +316,18 @@ impl Project {
             }
         }
 
-        self.models.iter()
+        self.models
+            .iter()
             .filter(|m| selected.contains(&m.name))
             .collect()
     }
 
-    fn collect_ancestors(&self, model: &ModelFile, name_to_model: &HashMap<String, &ModelFile>, selected: &mut HashSet<String>) {
+    fn collect_ancestors(
+        &self,
+        model: &ModelFile,
+        name_to_model: &HashMap<String, &ModelFile>,
+        selected: &mut HashSet<String>,
+    ) {
         if selected.insert(model.name.clone()) {
             for dep_name in &model.dependencies {
                 if let Some(dep) = name_to_model.get(dep_name) {
@@ -290,7 +340,7 @@ impl Project {
     fn collect_descendants(&self, model: &ModelFile, selected: &mut HashSet<String>) {
         if selected.insert(model.name.clone()) {
             // This is slow, but works for now. In a real system we'd build an adjacency list.
-            for other in self.models.iter() {
+            for other in &self.models {
                 if other.dependencies.iter().any(|d| d == &model.name) {
                     self.collect_descendants(other, selected);
                 }
@@ -299,7 +349,8 @@ impl Project {
     }
 
     pub fn filter_by_state(&self, prior: &crate::artifacts::Manifest) -> Vec<&ModelFile> {
-        self.models.iter()
+        self.models
+            .iter()
             .filter(|m| {
                 if let Some(node) = prior.nodes.get(&m.name) {
                     node.raw_sql != m.raw_sql

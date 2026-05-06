@@ -18,4 +18,3 @@ test_contracts/
 # Misc
 .env
 *.log
-TITAN_SPEC.md

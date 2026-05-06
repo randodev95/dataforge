@@ -53,23 +53,20 @@ impl TitanHasher {
         is_inc: bool,
     ) -> LogicHash {
         let mut hasher = Self::new();
-        
+
         // 1. Process Normalized SQL
         hasher.update(normalized_sql);
-        
+
         // 2. Process Serialized Config
         hasher.update(config_json);
 
         // 3. Process is_inc flag
         hasher.update(if is_inc { "incremental" } else { "initial" });
-        
+
         // 4. Process Parent Hashes in deterministic order
-        let mut sorted_parents: Vec<&str> = parent_hashes
-            .iter()
-            .map(|h| h.as_str())
-            .collect();
+        let mut sorted_parents: Vec<&str> = parent_hashes.iter().map(LogicHash::as_str).collect();
         sorted_parents.sort_unstable();
-        
+
         for parent in sorted_parents {
             hasher.update(parent);
         }

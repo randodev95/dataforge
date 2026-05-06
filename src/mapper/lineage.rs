@@ -1,9 +1,12 @@
+use anyhow::Result;
 use flowscope_core::analyzer::analyze;
-use flowscope_core::types::{AnalyzeRequest, Dialect as FlowDialect, SchemaMetadata, AnalysisOptions, SchemaTable, ColumnSchema};
+use flowscope_core::types::{
+    AnalysisOptions, AnalyzeRequest, ColumnSchema, Dialect as FlowDialect, SchemaMetadata,
+    SchemaTable,
+};
+use sqlparser::ast::{ColumnDef, Statement};
 use sqlparser::dialect::PostgreSqlDialect;
 use sqlparser::parser::Parser;
-use sqlparser::ast::{Statement, ColumnDef};
-use anyhow::Result;
 
 pub struct Mapper {
     schema_metadata: SchemaMetadata,
@@ -29,7 +32,8 @@ impl Mapper {
         for stmt in ast {
             if let Statement::CreateTable(create_table) = stmt {
                 let table_name = create_table.name.to_string();
-                let flow_columns: Vec<ColumnSchema> = create_table.columns
+                let flow_columns: Vec<ColumnSchema> = create_table
+                    .columns
                     .into_iter()
                     .map(|c: ColumnDef| ColumnSchema {
                         name: c.name.to_string(),
@@ -65,9 +69,12 @@ impl Mapper {
         };
 
         let result = analyze(&request);
-        
-        println!("Lineage analysis complete. Found {} statements.", result.statements.len());
-        
+
+        println!(
+            "Lineage analysis complete. Found {} statements.",
+            result.statements.len()
+        );
+
         Ok(())
     }
 }

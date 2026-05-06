@@ -1,13 +1,13 @@
 //! # Environment Profiles
-//! 
-//! This module handles environment-specific configurations (e.g. dev, prod), 
+//!
+//! This module handles environment-specific configurations (e.g. dev, prod),
 //! including schema prefixes, target execution types, and credentials.
 
+use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::path::Path;
-use anyhow::Result;
 use std::fs;
+use std::path::Path;
 
 /// Configuration for a specific environment target.
 #[derive(Debug, Serialize, Deserialize, Clone)]

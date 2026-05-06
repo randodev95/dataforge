@@ -1,14 +1,29 @@
-use sov_schema_db::{define_schema, Schema, DB, schema::{KeyEncoder, KeyDecoder, ValueCodec}, CodecError};
+use crate::error::{Result, TitanError};
+use crate::filler::grace_period::GracePeriodRecord;
 use crate::fingerprint::LogicHash;
-use serde::{Deserialize, Serialize};
-use crate::error::{TitanError, Result};
-use std::path::Path;
-use std::fmt::Debug;
 use rocksdb::Options;
+use serde::{Deserialize, Serialize};
+use sov_schema_db::{
+    CodecError, DB, Schema, define_schema,
+    schema::{KeyDecoder, KeyEncoder, ValueCodec},
+};
+use std::fmt::Debug;
+use std::path::Path;
 
-define_schema!(ModelMetadataSchema, LogicHash, ModelMetadata, "model_metadata");
+define_schema!(
+    ModelMetadataSchema,
+    LogicHash,
+    ModelMetadata,
+    "model_metadata"
+);
 define_schema!(ModelValueLogSchema, LogicHash, String, "value_log");
 define_schema!(NameHashIndexSchema, String, LogicHash, "name_hash_index");
+define_schema!(
+    GracePeriodSchema,
+    String,
+    Vec<GracePeriodRecord>,
+    "grace_period"
+);
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ModelMetadata {
@@ -48,7 +63,9 @@ impl KeyEncoder<NameHashIndexSchema> for String {
 }
 impl KeyDecoder<NameHashIndexSchema> for String {
     fn decode_key(data: &[u8]) -> std::result::Result<Self, CodecError> {
-        std::str::from_utf8(data).map_err(|e| CodecError::Wrapped(e.into())).map(|s| s.to_string())
+        std::str::from_utf8(data)
+            .map_err(|e| CodecError::Wrapped(e.into()))
+            .map(std::string::ToString::to_string)
     }
 }
 
@@ -66,7 +83,9 @@ impl ValueCodec<ModelValueLogSchema> for String {
         Ok(self.as_bytes().to_vec())
     }
     fn decode_value(data: &[u8]) -> std::result::Result<Self, CodecError> {
-        std::str::from_utf8(data).map_err(|e| CodecError::Wrapped(e.into())).map(|s| s.to_string())
+        std::str::from_utf8(data)
+            .map_err(|e| CodecError::Wrapped(e.into()))
+            .map(std::string::ToString::to_string)
     }
 }
 
@@ -97,47 +116,62 @@ impl StateStore {
                 ModelMetadataSchema::COLUMN_FAMILY_NAME,
                 ModelValueLogSchema::COLUMN_FAMILY_NAME,
                 NameHashIndexSchema::COLUMN_FAMILY_NAME,
+                GracePeriodSchema::COLUMN_FAMILY_NAME,
             ],
             &options,
-        ).map_err(|e| crate::error::TitanError::DatabaseError(e.to_string()))?;
+        )
+        .map_err(|e| crate::error::TitanError::DatabaseError(e.to_string()))?;
 
         Ok(Self { db })
     }
 
     /// Prefixes the model name with environment for isolation
     fn env_key(env: &str, name: &str) -> String {
-        format!("{}::{}", env, name)
+        format!("{env}::{name}")
     }
 
-    pub fn put_metadata(&self, env: &str, name: &str, hash: &LogicHash, metadata: &ModelMetadata) -> Result<()> {
+    pub fn put_metadata(
+        &self,
+        env: &str,
+        name: &str,
+        hash: &LogicHash,
+        metadata: &ModelMetadata,
+    ) -> Result<()> {
         let batch = sov_schema_db::SchemaBatch::default();
-        batch.put::<ModelMetadataSchema>(hash, metadata)
+        batch
+            .put::<ModelMetadataSchema>(hash, metadata)
             .map_err(|e| TitanError::StateError(e.to_string()))?;
-        batch.put::<NameHashIndexSchema>(&Self::env_key(env, name), hash)
+        batch
+            .put::<NameHashIndexSchema>(&Self::env_key(env, name), hash)
             .map_err(|e| TitanError::StateError(e.to_string()))?;
-        
-        self.db.write_schemas(batch)
+
+        self.db
+            .write_schemas(batch)
             .map_err(|e: anyhow::Error| TitanError::StateError(e.to_string()))?;
         Ok(())
     }
 
     pub fn get_metadata(&self, hash: &LogicHash) -> Result<Option<ModelMetadata>> {
-        self.db.get::<ModelMetadataSchema>(hash)
+        self.db
+            .get::<ModelMetadataSchema>(hash)
             .map_err(|e| crate::error::TitanError::DatabaseError(e.to_string()))
     }
 
     pub fn get_hash_by_name(&self, env: &str, name: &str) -> Result<Option<LogicHash>> {
-        self.db.get::<NameHashIndexSchema>(&Self::env_key(env, name))
+        self.db
+            .get::<NameHashIndexSchema>(&Self::env_key(env, name))
             .map_err(|e| crate::error::TitanError::DatabaseError(e.to_string()))
     }
 
     pub fn put_value(&self, hash: &LogicHash, sql: String) -> Result<()> {
-        self.db.put::<ModelValueLogSchema>(hash, &sql)
+        self.db
+            .put::<ModelValueLogSchema>(hash, &sql)
             .map_err(|e| crate::error::TitanError::DatabaseError(e.to_string()))
     }
 
     pub fn get_value(&self, hash: &LogicHash) -> Result<Option<String>> {
-        self.db.get::<ModelValueLogSchema>(hash)
+        self.db
+            .get::<ModelValueLogSchema>(hash)
             .map_err(|e| crate::error::TitanError::DatabaseError(e.to_string()))
     }
 
@@ -147,5 +181,48 @@ impl StateStore {
         } else {
             Ok(None)
         }
+    }
+
+    pub fn get_grace_periods(&self, env: &str, model_name: &str) -> Result<Vec<GracePeriodRecord>> {
+        let key = Self::env_key(env, model_name);
+        Ok(self
+            .db
+            .get::<GracePeriodSchema>(&key)
+            .map_err(|e| crate::error::TitanError::DatabaseError(e.to_string()))?
+            .unwrap_or_default())
+    }
+
+    pub fn put_grace_periods(
+        &self,
+        env: &str,
+        model_name: &str,
+        records: Vec<GracePeriodRecord>,
+    ) -> Result<()> {
+        let key = Self::env_key(env, model_name);
+        self.db
+            .put::<GracePeriodSchema>(&key, &records)
+            .map_err(|e| crate::error::TitanError::DatabaseError(e.to_string()))
+    }
+}
+
+impl KeyEncoder<GracePeriodSchema> for String {
+    fn encode_key(&self) -> std::result::Result<Vec<u8>, CodecError> {
+        Ok(self.as_bytes().to_vec())
+    }
+}
+impl KeyDecoder<GracePeriodSchema> for String {
+    fn decode_key(data: &[u8]) -> std::result::Result<Self, CodecError> {
+        std::str::from_utf8(data)
+            .map_err(|e| CodecError::Wrapped(e.into()))
+            .map(std::string::ToString::to_string)
+    }
+}
+
+impl ValueCodec<GracePeriodSchema> for Vec<GracePeriodRecord> {
+    fn encode_value(&self) -> std::result::Result<Vec<u8>, CodecError> {
+        serde_json::to_vec(self).map_err(|e| CodecError::Wrapped(e.into()))
+    }
+    fn decode_value(data: &[u8]) -> std::result::Result<Self, CodecError> {
+        serde_json::from_slice(data).map_err(|e| CodecError::Wrapped(e.into()))
     }
 }
